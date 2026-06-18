@@ -1,0 +1,125 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    /* 灰階漸層底色（淺灰 → 深灰），作為地圖載入前 / 縫隙的底色 */
+    background:
+      radial-gradient(1200px 800px at 30% 20%, #3a3d44 0%, transparent 60%),
+      linear-gradient(160deg, #4b4e55 0%, #2c2e33 55%, #1d1e22 100%);
+    color: #f1f2f4;
+    font-family: 'Noto Sans TC', 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body { background: transparent; }
+  /* 數字使用較粗字重強調（tabular 對齊） */
+  .num { font-variant-numeric: tabular-nums; font-weight: 700; letter-spacing: -0.01em; }
+}
+
+@layer components {
+  /* 玻璃擬態 — 深灰半透明卡片 */
+  .glass {
+    background: rgba(28, 30, 35, 0.62);
+    backdrop-filter: blur(18px) saturate(120%);
+    -webkit-backdrop-filter: blur(18px) saturate(120%);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  }
+  .glass-soft {
+    background: rgba(40, 43, 49, 0.55);
+    backdrop-filter: blur(14px) saturate(120%);
+    -webkit-backdrop-filter: blur(14px) saturate(120%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  /* 更透明的導覽列玻璃 — 浮在地圖上 */
+  .glass-nav {
+    background: rgba(24, 26, 30, 0.38);
+    backdrop-filter: blur(20px) saturate(130%);
+    -webkit-backdrop-filter: blur(20px) saturate(130%);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.30);
+  }
+  /* 內層格子（卡片內小區塊） */
+  .glass-cell {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+}
+
+/* ─── Leaflet：灰階單色地圖（CARTO dark_all：乾淨深色掃描質感） ─── */
+.leaflet-tile {
+  /* 去色 + 提亮，呈現中性灰、白色街道路網 */
+  filter: grayscale(1) brightness(1.06) contrast(1.04);
+}
+.leaflet-container {
+  background: #2a2c31;
+}
+/* 等高線 / 地形掃描質感：細線網格 + 暈影 */
+.map-texture {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 400;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mix-blend-mode: overlay;
+}
+.map-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 401;
+  background: radial-gradient(120% 90% at 50% 45%, transparent 55%, rgba(20, 21, 24, 0.55) 100%);
+}
+
+/* attribution 低調化 */
+.leaflet-control-attribution {
+  background: rgba(20, 21, 24, 0.6) !important;
+  color: rgba(255, 255, 255, 0.4) !important;
+  font-size: 9px !important;
+}
+.leaflet-control-attribution a { color: rgba(255, 255, 255, 0.55) !important; }
+
+/* Leaflet tooltip → 深灰玻璃 */
+.leaflet-tooltip {
+  background: rgba(24, 26, 30, 0.92) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #f1f2f4 !important;
+  border-radius: 10px !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4) !important;
+}
+.leaflet-tooltip-right::before { border-right-color: rgba(255, 255, 255, 0.12) !important; }
+.leaflet-tooltip-left::before  { border-left-color: rgba(255, 255, 255, 0.12) !important; }
+
+/* 節點光暈擴散（白色 + 狀態色） */
+@keyframes marker-ping {
+  75%, 100% { transform: scale(2.2); opacity: 0; }
+}
+.marker-ping {
+  animation: marker-ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes halo-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 0.9; }
+}
+.marker-halo { animation: halo-pulse 3s ease-in-out infinite; }
+
+/* 底部 sheet 滑入 */
+.sheet-enter {
+  animation: sheet-up 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+}
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+/* 隱藏卷軸但可滑動 */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* 表單元素配色（深色下拉、輸入） */
+select option { background: #1c1e23; color: #f1f2f4; }
+input[type='range'] { accent-color: #e5e7eb; }

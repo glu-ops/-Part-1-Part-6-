@@ -1,0 +1,42 @@
+[
+  {
+    "id": "R001",
+    "shelter_id": "TN-E-004",
+    "type": "crowd",
+    "severity": "yellow",
+    "note": "成大工學院入口排隊，但秩序良好",
+    "reported_at": "2026-06-18T09:10:00+08:00",
+    "lat": 22.9973,
+    "lng": 120.2195
+  },
+  {
+    "id": "R002",
+    "shelter_id": "TN-E-009",
+    "type": "crowd",
+    "severity": "red",
+    "note": "東光國小幾乎爆滿，不建議前往",
+    "reported_at": "2026-06-18T09:25:00+08:00",
+    "lat": 22.9956,
+    "lng": 120.2389
+  },
+  {
+    "id": "R003",
+    "shelter_id": "TN-E-008",
+    "type": "resource",
+    "severity": "green",
+    "note": "市立醫院地下室物資充足，醫護人員在場",
+    "reported_at": "2026-06-18T09:20:00+08:00",
+    "lat": 23.0005,
+    "lng": 120.2365
+  },
+  {
+    "id": "R004",
+    "shelter_id": null,
+    "type": "road",
+    "severity": "red",
+    "note": "崇德路與東平路交叉口道路中斷，請繞行",
+    "reported_at": "2026-06-18T09:05:00+08:00",
+    "lat": 22.9895,
+    "lng": 120.2345
+  }
+]

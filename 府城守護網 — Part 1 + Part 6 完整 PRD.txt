@@ -1,0 +1,358 @@
+府城守護網 — Part 1 + Part 6 完整 PRD（Vibe Coding 版 v2）
+
+0. Vibe Coding 必讀注意事項
+給 AI 編碼工具的關鍵約束：
+- 不要過度設計：不要引入 Redux、不要 SSR、不要 monorepo
+- 不要做 F2.5（低耗電模式）— 已砍
+- 不要做 F2.3（火勢擴散預測）— 已砍，理由：疊圖運算成本高、demo風險大
+- 所有資料先用本地 JSON，不要連真實後端
+- Mesh 部分必須真的能跑（PeerJS），不能用動畫蒙混
+- PWA 必須真的能離線（Service Worker 真實快取，不是假裝）
+- UI 用 Tailwind 直接寫，不要拉 shadcn 全套
+- 用繁體中文介面
+- 行動裝置優先（max-width 為主，桌面也要看得了）
+
+
+1. 產品定位
+產品名稱：府城守護網 Tainan Guardian Net
+基地：台南市東區
+形態：PWA Web App（可加入主畫面、可離線）
+核心一句話：預測抵達時的避難所狀態 + 斷網仍可用 + 真實 P2P 通訊
+對標差異化：現有政府 APP 只查現在；本系統預測未來、能離線、能 P2P
+
+
+2. 技術規格
+
+2.1 技術棧（鎖死版本，給 AI 用）
+- 框架: Vite + React 18 + TypeScript
+- 樣式: Tailwind CSS 3.x
+- 地圖: Leaflet 1.9 + react-leaflet 4.x
+- 圖示: lucide-react
+- 路由: react-router-dom 6.x
+- PWA: vite-plugin-pwa（用 Workbox）
+- P2P: peerjs 1.5.x
+- 狀態管理: React useState + Context（不要 Redux/Zustand）
+- 部署: Vercel（自動 HTTPS，PWA 必要）
+
+2.2 檔案結構
+src/
+├── data/
+│   ├── shelters.json          // 16處避難所
+│   ├── hazards.json           // 模擬災害資料
+│   └── reports.json           // 模擬群眾回報
+├── components/
+│   ├── Map/
+│   │   ├── ShelterMap.tsx
+│   │   └── ShelterMarker.tsx
+│   ├── ShelterCard/
+│   │   ├── ShelterCard.tsx
+│   │   └── StatusBadge.tsx
+│   ├── Predict/
+│   │   ├── PredictPanel.tsx
+│   │   └── TimelineSlider.tsx
+│   ├── Mesh/
+│   │   ├── MeshPanel.tsx       // PeerJS 連線管理
+│   │   └── MessageList.tsx
+│   ├── Report/
+│   │   └── ReportForm.tsx
+│   └── ui/                     // Button, Badge, Card 等
+├── contexts/
+│   ├── UserContext.tsx         // 角色、災害模式
+│   └── ShelterContext.tsx      // 避難所狀態
+├── hooks/
+│   ├── usePeerMesh.ts          // PeerJS 邏輯
+│   └── useOfflineSync.ts
+├── pages/
+│   ├── HomePage.tsx
+│   ├── ShelterDetailPage.tsx
+│   ├── RoutePage.tsx
+│   ├── ReportPage.tsx
+│   └── MeshPage.tsx
+├── App.tsx
+└── main.tsx
+public/
+├── manifest.json
+├── icon-192.png
+├── icon-512.png
+└── offline-tiles/              // 預下載的地圖瓦片
+
+
+3. 資料規格
+
+3.1 避難所 JSON 結構（給 AI：請完整生成 16 筆東區資料）
+{
+  "shelter_id": "TN-E-001",
+  "name": "東區區公所",
+  "type": "government",
+  "type_label": "政府指定避難所",
+  "address": "崇學路 99 號",
+  "lat": 22.9836,
+  "lng": 120.2273,
+  "capacity": {
+    "physical": 1106,
+    "current_estimate": 300,
+    "vulnerable_capacity": 50
+  },
+  "entry_status": "official_open",
+  "structure_age": 25,
+  "endurance_hours": 2,
+  "resources": {
+    "water": "green",
+    "food": "yellow",
+    "medical": "green",
+    "power": "red"
+  },
+  "last_updated": "2026-06-18T09:25:54+08:00",
+  "report_count": 12,
+  "applicable_disasters": ["earthquake", "war", "epidemic"],
+  "not_suitable_for": ["flood"]
+}
+
+東區 16 處實際資料（參考 https://www.tneast.gov.tw/cl.aspx?n=47860），
+AI 不確定的座標可用東區範圍內合理值填入並標註 mock。
+
+3.2 狀態與資料字典
+entry_status: "official_open" | "crowd_reported" | "unverified" | "closed"
+類型: government | basement | shelter_tunnel | emergency
+資源燈號: "green" | "yellow" | "red"
+角色: student | elderly | pregnant | child | disabled | adult
+災害: earthquake | flood | war | epidemic
+綜合狀態: safe（綠）| caution（黃）| danger（紅）
+
+3.3 綜合狀態計算邏輯（給 AI 實作）
+score = 0
+if entry_status == "official_open": score += 30
+elif entry_status == "crowd_reported": score += 15
+if resources.water == "green": score += 15 else if yellow: score += 5
+（其他資源同理，加總約 60 分）
+if structure_age > 50: score -= 20
+if current/physical > 0.8: score -= 15
+
+score >= 60 → safe（綠）
+30 <= score < 60 → caution（黃）
+score < 30 → danger（紅）
+
+
+4. 功能清單（Definition of Done）
+
+Part 1：地點評估與動態判斷
+ID    功能          完成定義
+F1.1  地圖總覽       Leaflet 地圖中心為東區，16 處 marker，三色
+F1.2  點 marker 跳卡片  顯示距離、可進入狀態、容量、物資 4 燈、最後更新時間
+F1.3  進詳情頁       完整評估卡 + 適用災害 + 群眾回報數
+F1.4  角色切換       Header 下拉切 6 種角色，路線/排序結果即時變
+F1.5  災害模式切換     切換時，淹水模式下地下室類型自動標紅「不適用」
+F1.6  動態升降級      時間軸 slider，拖動時 marker 顏色會即時變
+
+Part 6：未來預測與離線可用
+ID    功能          完成定義
+F2.1  抵達時預測      輸入起點 → 計算步行時間 → 顯示「抵達時」該所狀態
+F2.2  淹水蔓延預測     地圖疊一層藍色漸層，可拖時間軸看擴散
+F2.4  容量飽和預測     進度條 + 倒數「預計 X 分鐘飽和」
+F2.5  群體分流推播     預測某所將滿 → 跳 toast 推薦替代所
+F2.6  PWA 離線可用     開飛航模式重新整理仍可開啟並顯示地圖
+F2.7  Mesh P2P 通訊    兩個瀏覽器分頁/裝置真實連線，傳 SOS 訊息
+F2.8  資訊回報表單     送出後寫入 localStorage 並顯示在地圖
+
+【已砍】F2.3 火勢擴散預測（疊圖難做，demo風險高，detail page可留一句「未來擴充」即可）
+
+
+5. 頁面規格
+
+5.1 路由
+/ → HomePage（地圖總覽）
+/shelter/:id → ShelterDetailPage
+/route → RoutePage（路線規劃）
+/report → ReportPage（資訊回報）
+/mesh → MeshPage（Mesh 通訊示範）
+
+5.2 Header（每頁固定）
+[府城守護網 logo] [角色切換 ▼] [災害切換 ▼] [線上/離線指示]
+
+5.3 HomePage（地圖總覽）
+布局：
+- 上方：Header
+- 中間：全螢幕 Leaflet 地圖（東區）
+- 右上浮動：時間軸 slider（現在 → 30 分鐘後）
+- 左下浮動：圖例（綠/黃/紅）
+- 底部 Tab：地圖 / 路線 / 回報 / Mesh
+
+行為：
+- 載入時定位東區中心（22.985, 120.227, zoom 14）
+- 16 個 marker 三色標
+- 拖時間軸 → 部分 marker 變色（模擬災害蔓延）
+- 點 marker → 浮出底部 sheet（縮略評估卡）→ 點「詳情」進詳情頁
+
+5.4 ShelterDetailPage
+內容：
+- 評估卡完整版（所有欄位）
+- 「適用災害」標籤列
+- 「群眾回報」狀態（X 人回報，最新時間）
+- 大按鈕：「規劃路線到這裡」→ 跳 /route?dest=:id
+- 「抵達時預測」區塊：估算步行時間 + 抵達時狀態
+
+5.5 RoutePage
+內容：
+- 起點輸入（或「使用我目前位置」）
+- 終點：預選或下拉
+- 角色切換
+- 災害切換
+- 「規劃」按鈕 → 顯示路線（簡易版：直線即可，註明「路線演算法由 Part 2 同學負責」）
+- 抵達時狀態預測卡
+- 群體分流提示：若預測該所將滿，跳建議框
+
+5.6 ReportPage
+內容：
+- 回報類型（單選）：擁擠度 / 道路狀況 / 物資 / 災情
+- 位置：地圖上點選 or 使用目前位置
+- 嚴重度：綠/黃/紅
+- 備註（選填）
+- 送出 → 存 localStorage → toast 確認 → 地圖上即時出現標記
+
+5.7 MeshPage
+內容：
+- 上方：「我的節點 ID」顯示（PeerJS 給的 ID）
+- 「複製 ID」按鈕
+- 「連線到對方」輸入框 + 連線按鈕
+- 連線清單（顯示已連節點）
+- 訊息收發區（類聊天室介面）
+- SOS 大按鈕（一鍵發送預設訊息）
+- 視覺化：節點關係圖（連到誰）
+
+
+6. User Flow（核心三條）
+
+Flow A：日常情境（資訊查詢）
+打開 App → 看到東區地圖與 16 處避難所 → 點最近的綠色 marker
+→ 看評估卡（最後更新時間 5 分鐘前）→ 進詳情頁 → 看容量與物資狀態 → 心安回家
+
+Flow B：災害情境（疏散決策）
+聽到警報，打開 App → 切換災害模式為「地震」→ 切換角色為「老人」（陪父母）
+→ 地圖上 marker 顏色更新（老屋密集區的所變黃）→ 點看似最近的所，發現「結構受損，已降級」
+→ 系統自動推薦次佳所 → 點「規劃路線到這裡」→ 看到「抵達時預測：剛好飽和」
+→ 系統跳「建議改往 B 所」→ 選擇 B 所 → 出發
+
+Flow C：斷網情境（Mesh 通訊）
+基地台被毀，沒網路 → App 仍可開啟（PWA 離線）→ 進入 Mesh 頁 → 開啟 P2P 連線
+→ 看到附近節點（同學手機）→ 發送「我已平安抵達 A 所」訊息 → 訊息透過 Mesh 傳給家人
+→ 家人回覆「收到，我在 B 所」
+
+
+7. PWA 設定（給 AI 的明確指令）
+
+7.1 vite-plugin-pwa 設定
+VitePWA({
+  registerType: 'autoUpdate',
+  manifest: {
+    name: '府城守護網',
+    short_name: '守護網',
+    theme_color: '#1e40af',
+    background_color: '#ffffff',
+    display: 'standalone',
+    start_url: '/',
+    icons: [/* 192, 512 */]
+  },
+  workbox: {
+    globPatterns: ['**/*.{js,css,html,json,png,svg}'],
+    runtimeCaching: [
+      {
+        urlPattern: /^https:\/\/.*\.tile\.openstreetmap\.org\/.*/,
+        handler: 'CacheFirst',
+        options: {
+          cacheName: 'osm-tiles',
+          expiration: { maxEntries: 500, maxAgeSeconds: 30*24*60*60 }
+        }
+      }
+    ]
+  }
+})
+
+7.2 離線驗證步驟（demo 時用）
+1. 首次造訪 / 走過一次所有頁面（讓 SW 快取所有 tile）
+2. Chrome DevTools → Application → Service Workers → 確認註冊
+3. 切換到 Offline → 重新整理 → App 仍可開啟
+4. 地圖區域（東區）仍可顯示
+
+
+8. Mesh 實作關鍵（PeerJS）
+
+8.1 重要決策
+- 不自架 signaling server（一週時間不夠）
+- 用 PeerJS 公開 broker（免費，預設可用）
+- 限制：首次握手需網路，握手後 P2P 直連
+- demo 時這樣說：「首次配對需網路，配對後即可離線 P2P」
+
+8.2 程式骨架
+import Peer from 'peerjs';
+
+const peer = new Peer(); // 自動生成 ID
+peer.on('open', (id) => setMyId(id));
+
+// 主動連線
+const conn = peer.connect(targetPeerId);
+conn.on('open', () => conn.send({type: 'sos', text: '我已平安'}));
+
+// 接受連線
+peer.on('connection', (conn) => {
+  conn.on('data', (data) => addMessage(data));
+});
+
+8.3 Demo 設備建議
+- 兩台手機 + 一台筆電（三節點 Mesh）
+- 三個瀏覽器分頁開不同視窗模擬
+
+
+9. Vibe Coding 任務切分（建議給 AI 的提示順序）
+任務 1：初始化專案 + 路由 + PWA 設定 + 16 筆 shelters.json
+任務 2：HomePage 地圖 + marker + 三色狀態 + 底部 sheet
+任務 3：ShelterDetailPage 評估卡完整版
+任務 4：UserContext（角色/災害切換）+ Header
+任務 5：時間軸 slider + 動態升降級
+任務 6：RoutePage + 抵達時預測 + 群體分流推播
+任務 7：ReportPage + localStorage 持久化
+任務 8：MeshPage + PeerJS 整合
+任務 9：PWA Service Worker 驗證 + 離線測試
+任務 10：部署 Vercel + 整合測試
+每個任務獨立，任一卡關不影響其他任務。
+
+
+10. AI 編碼常見坑（給 AI 預先警告）
+- Leaflet 在 React 18 嚴格模式下會 double init：用 react-leaflet 而非直接 Leaflet
+- Vite PWA 開發模式不會啟用 SW：要 npm run build && npm run preview 才能測離線
+- PeerJS 在 HTTPS 才能正常：本地用 vite 預設 https 模式
+- Leaflet 的 marker icon 在 Vite 會壞掉：要手動 import marker-icon.png
+- iOS Safari PWA 限制多：demo 用 Chrome Android 或桌面 Chrome
+- OpenStreetMap tile 大量請求會被封鎖：demo 前一晚先預跑載快取
+- 不要用 Date.now() 直接顯示：用 dayjs 格式化「N 分鐘前」
+- 時間軸切換時，shelters 狀態要 useMemo：否則每次拖都重算 16 個會卡
+
+
+11. 驗收標準（Demo 當天必過）
+項目              驗收方式
+地圖載入 < 3 秒      測 3 次平均
+飛航模式可開啟        DevTools Offline 重整
+切換角色推薦結果變      老人/青壯年同起點不同推薦
+切換災害狀態變        淹水時地下室標紅
+時間軸動態           拖到 15 分鐘後，至少 3 個 marker 變色
+Mesh 真實連線        兩台裝置真的通訊
+群眾回報持久化         重整後仍存在
+
+
+12. 砍動順序（時間真的不夠時，從最先砍到最後砍）
+1. F2.4 容量飽和預測（用模擬數字即可）
+2. F1.6 動態升降級（改成預設兩個時間點）
+3. F2.5 群體分流（改成靜態文案）
+
+絕對不能砍：
+- F1.1-1.3（地圖 + 評估卡）= Part 1 命脈
+- F2.6 PWA 離線 = 最強亮點
+- F2.7 Mesh = 第二強亮點
+
+
+13. Demo 當天備援
+風險                  備援
+Vercel 部署掛掉          本機 npm run preview
+網路斷                反而是離線示範好時機
+PeerJS broker 掛         提前準備錄影備援
+地圖 tile 載不出          提前一晚預跑載快取
+同學裝置太舊            用自己兩台筆電 demo Mesh

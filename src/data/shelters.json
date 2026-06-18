@@ -1,0 +1,434 @@
+[
+  {
+    "shelter_id": "TN-E-001",
+    "name": "東區區公所",
+    "type": "government",
+    "type_label": "政府指定避難所",
+    "address": "崇學路 99 號",
+    "lat": 22.9836,
+    "lng": 120.2273,
+    "capacity": {
+      "physical": 1106,
+      "current_estimate": 300,
+      "vulnerable_capacity": 50
+    },
+    "entry_status": "official_open",
+    "structure_age": 25,
+    "endurance_hours": 72,
+    "resources": {
+      "water": "green",
+      "food": "yellow",
+      "medical": "green",
+      "power": "red"
+    },
+    "last_updated": "2026-06-18T09:25:54+08:00",
+    "report_count": 12,
+    "applicable_disasters": ["earthquake", "war", "epidemic"],
+    "not_suitable_for": ["flood"]
+  },
+  {
+    "shelter_id": "TN-E-002",
+    "name": "崇學國小防空避難室",
+    "type": "shelter_tunnel",
+    "type_label": "學校防空避難室",
+    "address": "崇學路 183 號",
+    "lat": 22.9858,
+    "lng": 120.2301,
+    "capacity": {
+      "physical": 640,
+      "current_estimate": 120,
+      "vulnerable_capacity": 30
+    },
+    "entry_status": "official_open",
+    "structure_age": 35,
+    "endurance_hours": 48,
+    "resources": {
+      "water": "green",
+      "food": "red",
+      "medical": "yellow",
+      "power": "yellow"
+    },
+    "last_updated": "2026-06-18T08:50:00+08:00",
+    "report_count": 5,
+    "applicable_disasters": ["earthquake", "war"],
+    "not_suitable_for": ["flood", "epidemic"]
+  },
+  {
+    "shelter_id": "TN-E-003",
+    "name": "東峰國中地下室避難所",
+    "type": "basement",
+    "type_label": "地下室避難所",
+    "address": "東平路 103 號",
+    "lat": 22.9891,
+    "lng": 120.2341,
+    "capacity": {
+      "physical": 480,
+      "current_estimate": 200,
+      "vulnerable_capacity": 20
+    },
+    "entry_status": "official_open",
+    "structure_age": 28,
+    "endurance_hours": 60,
+    "resources": {
+      "water": "yellow",
+      "food": "yellow",
+      "medical": "green",
+      "power": "green"
+    },
+    "last_updated": "2026-06-18T09:10:00+08:00",
+    "report_count": 8,
+    "applicable_disasters": ["earthquake", "war", "epidemic"],
+    "not_suitable_for": ["flood"]
+  },
+  {
+    "shelter_id": "TN-E-004",
+    "name": "成功大學工學院大樓地下室",
+    "type": "basement",
+    "type_label": "大學地下室避難所",
+    "address": "大學路 1 號（成大工學院）",
+    "lat": 22.9973,
+    "lng": 120.2195,
+    "capacity": {
+      "physical": 900,
+      "current_estimate": 450,
+      "vulnerable_capacity": 40
+    },
+    "entry_status": "official_open",
+    "structure_age": 15,
+    "endurance_hours": 96,
+    "resources": {
+      "water": "green",
+      "food": "green",
+      "medical": "green",
+      "power": "green"
+    },
+    "last_updated": "2026-06-18T09:30:00+08:00",
+    "report_count": 21,
+    "applicable_disasters": ["earthquake", "war", "epidemic"],
+    "not_suitable_for": ["flood"]
+  },
+  {
+    "shelter_id": "TN-E-005",
+    "name": "裕文國小防空避難室",
+    "type": "shelter_tunnel",
+    "type_label": "學校防空避難室",
+    "address": "裕農路 188 號",
+    "lat": 22.9812,
+    "lng": 120.2215,
+    "capacity": {
+      "physical": 520,
+      "current_estimate": 80,
+      "vulnerable_capacity": 25
+    },
+    "entry_status": "official_open",
+    "structure_age": 42,
+    "endurance_hours": 36,
+    "resources": {
+      "water": "green",
+      "food": "red",
+      "medical": "red",
+      "power": "red"
+    },
+    "last_updated": "2026-06-18T07:00:00+08:00",
+    "report_count": 2,
+    "applicable_disasters": ["earthquake", "war"],
+    "not_suitable_for": ["flood", "epidemic"]
+  },
+  {
+    "shelter_id": "TN-E-006",
+    "name": "東區衛生所緊急避難站",
+    "type": "government",
+    "type_label": "衛生所避難站",
+    "address": "東門路一段 28 號",
+    "lat": 22.9940,
+    "lng": 120.2172,
+    "capacity": {
+      "physical": 200,
+      "current_estimate": 60,
+      "vulnerable_capacity": 80
+    },
+    "entry_status": "official_open",
+    "structure_age": 20,
+    "endurance_hours": 120,
+    "resources": {
+      "water": "green",
+      "food": "green",
+      "medical": "green",
+      "power": "green"
+    },
+    "last_updated": "2026-06-18T09:20:00+08:00",
+    "report_count": 7,
+    "applicable_disasters": ["earthquake", "war", "epidemic", "flood"],
+    "not_suitable_for": []
+  },
+  {
+    "shelter_id": "TN-E-007",
+    "name": "勝利國小防空避難室",
+    "type": "shelter_tunnel",
+    "type_label": "學校防空避難室",
+    "address": "勝利路 103 號",
+    "lat": 23.0015,
+    "lng": 120.2234,
+    "capacity": {
+      "physical": 710,
+      "current_estimate": 180,
+      "vulnerable_capacity": 30
+    },
+    "entry_status": "official_open",
+    "structure_age": 38,
+    "endurance_hours": 48,
+    "resources": {
+      "water": "green",
+      "food": "yellow",
+      "medical": "yellow",
+      "power": "red"
+    },
+    "last_updated": "2026-06-18T08:40:00+08:00",
+    "report_count": 9,
+    "applicable_disasters": ["earthquake", "war"],
+    "not_suitable_for": ["flood", "epidemic"]
+  },
+  {
+    "shelter_id": "TN-E-008",
+    "name": "台南市立醫院地下停車場避難區",
+    "type": "basement",
+    "type_label": "醫院地下室避難所",
+    "address": "崇德路 670 號",
+    "lat": 23.0005,
+    "lng": 120.2365,
+    "capacity": {
+      "physical": 1200,
+      "current_estimate": 350,
+      "vulnerable_capacity": 150
+    },
+    "entry_status": "official_open",
+    "structure_age": 10,
+    "endurance_hours": 168,
+    "resources": {
+      "water": "green",
+      "food": "green",
+      "medical": "green",
+      "power": "green"
+    },
+    "last_updated": "2026-06-18T09:35:00+08:00",
+    "report_count": 34,
+    "applicable_disasters": ["earthquake", "war", "epidemic", "flood"],
+    "not_suitable_for": []
+  },
+  {
+    "shelter_id": "TN-E-009",
+    "name": "東光國小防空避難室",
+    "type": "shelter_tunnel",
+    "type_label": "學校防空避難室",
+    "address": "崇德路 168 號",
+    "lat": 22.9956,
+    "lng": 120.2389,
+    "capacity": {
+      "physical": 580,
+      "current_estimate": 510,
+      "vulnerable_capacity": 25
+    },
+    "entry_status": "crowd_reported",
+    "structure_age": 45,
+    "endurance_hours": 24,
+    "resources": {
+      "water": "yellow",
+      "food": "red",
+      "medical": "red",
+      "power": "red"
+    },
+    "last_updated": "2026-06-18T09:28:00+08:00",
+    "report_count": 47,
+    "applicable_disasters": ["earthquake", "war"],
+    "not_suitable_for": ["flood", "epidemic"]
+  },
+  {
+    "shelter_id": "TN-E-010",
+    "name": "大港社區活動中心避難所",
+    "type": "government",
+    "type_label": "社區活動中心避難所",
+    "address": "大港街 45 號（mock座標）",
+    "lat": 22.9778,
+    "lng": 120.2310,
+    "capacity": {
+      "physical": 320,
+      "current_estimate": 95,
+      "vulnerable_capacity": 35
+    },
+    "entry_status": "official_open",
+    "structure_age": 18,
+    "endurance_hours": 72,
+    "resources": {
+      "water": "green",
+      "food": "green",
+      "medical": "yellow",
+      "power": "yellow"
+    },
+    "last_updated": "2026-06-18T08:00:00+08:00",
+    "report_count": 3,
+    "applicable_disasters": ["earthquake", "war", "epidemic"],
+    "not_suitable_for": ["flood"]
+  },
+  {
+    "shelter_id": "TN-E-011",
+    "name": "復興國小防空避難室",
+    "type": "shelter_tunnel",
+    "type_label": "學校防空避難室",
+    "address": "裕農路 59 號（mock座標）",
+    "lat": 22.9820,
+    "lng": 120.2155,
+    "capacity": {
+      "physical": 460,
+      "current_estimate": 140,
+      "vulnerable_capacity": 20
+    },
+    "entry_status": "official_open",
+    "structure_age": 50,
+    "endurance_hours": 36,
+    "resources": {
+      "water": "yellow",
+      "food": "red",
+      "medical": "yellow",
+      "power": "red"
+    },
+    "last_updated": "2026-06-18T06:30:00+08:00",
+    "report_count": 1,
+    "applicable_disasters": ["earthquake", "war"],
+    "not_suitable_for": ["flood", "epidemic"]
+  },
+  {
+    "shelter_id": "TN-E-012",
+    "name": "東區戶政事務所地下室",
+    "type": "government",
+    "type_label": "政府機關避難所",
+    "address": "東門路一段 120 號（mock座標）",
+    "lat": 22.9932,
+    "lng": 120.2204,
+    "capacity": {
+      "physical": 280,
+      "current_estimate": 70,
+      "vulnerable_capacity": 40
+    },
+    "entry_status": "official_open",
+    "structure_age": 22,
+    "endurance_hours": 60,
+    "resources": {
+      "water": "green",
+      "food": "yellow",
+      "medical": "green",
+      "power": "yellow"
+    },
+    "last_updated": "2026-06-18T09:00:00+08:00",
+    "report_count": 6,
+    "applicable_disasters": ["earthquake", "war", "epidemic"],
+    "not_suitable_for": ["flood"]
+  },
+  {
+    "shelter_id": "TN-E-013",
+    "name": "崇善社區鄰里活動站",
+    "type": "emergency",
+    "type_label": "緊急指定避難所",
+    "address": "崇善路 22 號（mock座標）",
+    "lat": 22.9905,
+    "lng": 120.2415,
+    "capacity": {
+      "physical": 180,
+      "current_estimate": 25,
+      "vulnerable_capacity": 20
+    },
+    "entry_status": "unverified",
+    "structure_age": 30,
+    "endurance_hours": 24,
+    "resources": {
+      "water": "yellow",
+      "food": "red",
+      "medical": "red",
+      "power": "red"
+    },
+    "last_updated": "2026-06-18T05:00:00+08:00",
+    "report_count": 0,
+    "applicable_disasters": ["earthquake"],
+    "not_suitable_for": ["flood", "war", "epidemic"]
+  },
+  {
+    "shelter_id": "TN-E-014",
+    "name": "成功大學圖書館地下室",
+    "type": "basement",
+    "type_label": "大學地下室避難所",
+    "address": "大學路 1 號（成大圖書館）",
+    "lat": 22.9990,
+    "lng": 120.2211,
+    "capacity": {
+      "physical": 750,
+      "current_estimate": 280,
+      "vulnerable_capacity": 45
+    },
+    "entry_status": "official_open",
+    "structure_age": 8,
+    "endurance_hours": 96,
+    "resources": {
+      "water": "green",
+      "food": "green",
+      "medical": "yellow",
+      "power": "green"
+    },
+    "last_updated": "2026-06-18T09:22:00+08:00",
+    "report_count": 15,
+    "applicable_disasters": ["earthquake", "war", "epidemic"],
+    "not_suitable_for": ["flood"]
+  },
+  {
+    "shelter_id": "TN-E-015",
+    "name": "台糖長榮酒店地下停車場",
+    "type": "basement",
+    "type_label": "商業建築地下室",
+    "address": "東門路一段 289 號（mock座標）",
+    "lat": 22.9948,
+    "lng": 120.2135,
+    "capacity": {
+      "physical": 420,
+      "current_estimate": 60,
+      "vulnerable_capacity": 15
+    },
+    "entry_status": "crowd_reported",
+    "structure_age": 12,
+    "endurance_hours": 48,
+    "resources": {
+      "water": "green",
+      "food": "yellow",
+      "medical": "red",
+      "power": "green"
+    },
+    "last_updated": "2026-06-18T08:55:00+08:00",
+    "report_count": 18,
+    "applicable_disasters": ["earthquake", "war"],
+    "not_suitable_for": ["flood", "epidemic"]
+  },
+  {
+    "shelter_id": "TN-E-016",
+    "name": "東區消防分隊緊急避難區",
+    "type": "government",
+    "type_label": "消防署指定避難所",
+    "address": "東門路二段 88 號（mock座標）",
+    "lat": 22.9869,
+    "lng": 120.2258,
+    "capacity": {
+      "physical": 240,
+      "current_estimate": 30,
+      "vulnerable_capacity": 30
+    },
+    "entry_status": "official_open",
+    "structure_age": 16,
+    "endurance_hours": 120,
+    "resources": {
+      "water": "green",
+      "food": "green",
+      "medical": "green",
+      "power": "green"
+    },
+    "last_updated": "2026-06-18T09:32:00+08:00",
+    "report_count": 4,
+    "applicable_disasters": ["earthquake", "war", "epidemic", "flood"],
+    "not_suitable_for": []
+  }
+]

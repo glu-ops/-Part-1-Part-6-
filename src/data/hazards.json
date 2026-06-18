@@ -1,0 +1,29 @@
+[
+  {
+    "id": "H001",
+    "type": "flood",
+    "severity": "high",
+    "center": { "lat": 22.975, "lng": 120.240 },
+    "radius_km": 1.2,
+    "reported_at": "2026-06-18T08:00:00+08:00",
+    "description": "大港地區積水嚴重，水深約 60cm"
+  },
+  {
+    "id": "H002",
+    "type": "earthquake",
+    "severity": "medium",
+    "center": { "lat": 22.990, "lng": 120.225 },
+    "radius_km": 0.8,
+    "reported_at": "2026-06-18T09:00:00+08:00",
+    "description": "崇德路建物外牆龜裂，疑似結構受損"
+  },
+  {
+    "id": "H003",
+    "type": "war",
+    "severity": "high",
+    "center": { "lat": 23.000, "lng": 120.230 },
+    "radius_km": 2.0,
+    "reported_at": "2026-06-18T09:15:00+08:00",
+    "description": "防空警報發布，建議立即就近避難"
+  }
+]
