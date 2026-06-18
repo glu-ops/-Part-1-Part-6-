@@ -3,6 +3,7 @@ import L from 'leaflet'
 import { LocateFixed, Loader2 } from 'lucide-react'
 import LocationSearch from './LocationSearch'
 import ShelterMarker from './ShelterMarker'
+import BuildingLayer from './BuildingLayer'
 import ReportOverlay from './ReportOverlay'
 import FloodOverlay from './FloodOverlay'
 import { FlyTo, ClickCapture, InvalidateOnMount } from './mapHelpers'
@@ -57,6 +58,7 @@ export default function LocationPicker({ value, onChange, className, showContext
           maxZoom={20}
         />
         <InvalidateOnMount />
+        <BuildingLayer />
         <ClickCapture onPick={onChange} />
         <FlyTo target={value} />
 

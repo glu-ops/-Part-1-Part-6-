@@ -14,7 +14,14 @@ import {
 } from '../utils/scoring'
 import { getSurgeRate } from '../contexts/ShelterContext'
 import StatusBadge from '../components/ShelterCard/StatusBadge'
-import type { EntryStatus, ResourceStatus } from '../types'
+import { DISASTER_ICON } from '../disasters'
+import type { EntryStatus, ResourceStatus, DisasterMode } from '../types'
+
+// 災害情境圖示（單色線條，繼承所在文字顏色）
+function DIcon({ d, size = 13 }: { d: DisasterMode; size?: number }) {
+  const Icon = DISASTER_ICON[d]
+  return <Icon size={size} className="inline-block shrink-0" />
+}
 
 const ENTRY_STATUS_CFG: Record<EntryStatus, { Icon: typeof ShieldCheck; color: string }> = {
   official_open:   { Icon: ShieldCheck,    color: 'text-status-safe' },
@@ -35,9 +42,6 @@ const RES_COLOR: Record<ResourceStatus, string> = {
   red:    'text-status-danger',
 }
 
-const DISASTER_EMOJI: Record<string, string> = {
-  earthquake: '🌍', flood: '🌊', war: '⚠️', epidemic: '🦠',
-}
 const REPORT_SEV_COLOR: Record<ResourceStatus, string> = {
   green: 'text-status-safe', yellow: 'text-status-caution', red: 'text-status-danger',
 }
@@ -98,8 +102,8 @@ export default function ShelterDetailPage() {
         <div className="mx-4 mt-4 glass rounded-2xl p-4 flex gap-3 border border-status-danger/30">
           <AlertTriangle size={18} className="text-status-danger shrink-0 mt-0.5" />
           <div>
-            <p className="text-status-danger font-semibold text-sm">
-              {DISASTER_EMOJI[disaster]} {t('detail.naTitle', { disaster: t(`disaster.${disaster}`) })}
+            <p className="text-status-danger font-semibold text-sm flex items-center gap-1.5">
+              <DIcon d={disaster} size={14} /> {t('detail.naTitle', { disaster: t(`disaster.${disaster}`) })}
             </p>
             <p className="text-status-danger/70 text-xs mt-0.5">
               {t('detail.naDesc', { type: s.type_label })}
@@ -207,13 +211,13 @@ export default function ShelterDetailPage() {
           <p className="text-xs text-white/45 uppercase tracking-wider mb-3">{t('detail.applicable')}</p>
           <div className="flex flex-wrap gap-2">
             {s.applicable_disasters.map(d => (
-              <span key={d} className="glass-cell text-white/85 text-xs px-3 py-1 rounded-full">
-                {DISASTER_EMOJI[d]} {t(`disaster.${d}`)}
+              <span key={d} className="glass-cell text-white/85 text-xs px-3 py-1 rounded-full inline-flex items-center gap-1.5">
+                <DIcon d={d} /> {t(`disaster.${d}`)}
               </span>
             ))}
             {s.not_suitable_for.map(d => (
-              <span key={d} className="glass-cell text-status-danger/60 text-xs px-3 py-1 rounded-full line-through">
-                {DISASTER_EMOJI[d]} {t(`disaster.${d}`)}
+              <span key={d} className="glass-cell text-status-danger/60 text-xs px-3 py-1 rounded-full line-through inline-flex items-center gap-1.5">
+                <DIcon d={d} /> {t(`disaster.${d}`)}
               </span>
             ))}
           </div>

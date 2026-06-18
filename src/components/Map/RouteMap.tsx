@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { MapContainer, TileLayer, Marker, Polyline, useMap } from 'react-leaflet'
 import L from 'leaflet'
+import BuildingLayer from './BuildingLayer'
 import { InvalidateOnMount } from './mapHelpers'
 import type { LatLng } from '../../utils/geo'
 
@@ -58,6 +59,7 @@ export default function RouteMap({ from, to, path }: Props) {
           maxZoom={20}
         />
         <InvalidateOnMount />
+        <BuildingLayer />
         <FitRoute points={line} />
 
         {/* 深色描邊（casing），讓白線在灰圖上有對比 */}

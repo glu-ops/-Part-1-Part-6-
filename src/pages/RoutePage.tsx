@@ -13,9 +13,10 @@ import { getOverallStatus, walkMinutes, calcRoleScore, sortByRole, minutesToSatu
 import StatusBadge from '../components/ShelterCard/StatusBadge'
 import RouteMap from '../components/Map/RouteMap'
 import RoutePlanMap from '../components/Map/RoutePlanMap'
+import { DISASTERS, DISASTER_ICON } from '../disasters'
 import { getWalkingRoute, googleMapsDirUrl } from '../utils/geo'
 import type { RouteResult } from '../utils/geo'
-import type { UserRole, DisasterMode } from '../types'
+import type { UserRole } from '../types'
 
 const TRAVEL = [
   { key: 'walk', Icon: Footprints, active: true },
@@ -28,10 +29,6 @@ const ROLE_ICON: Record<UserRole, typeof User> = {
   child: Baby, disabled: Accessibility, student: GraduationCap,
 }
 const ROLES = Object.keys(ROLE_ICON) as UserRole[]
-const DISASTERS: { value: DisasterMode; emoji: string }[] = [
-  { value: 'earthquake', emoji: '🌍' }, { value: 'flood', emoji: '🌊' },
-  { value: 'war', emoji: '⚠️' }, { value: 'epidemic', emoji: '🦠' },
-]
 
 export default function RoutePage() {
   const [params] = useSearchParams()
@@ -161,12 +158,15 @@ export default function RoutePage() {
           <div>
             <span className="text-[11px] text-white/45 block mb-2">{t(`disaster.${disaster}`)}</span>
             <div className="grid grid-cols-4 gap-1.5">
-              {DISASTERS.map(d => (
-                <button key={d.value} onClick={() => setDisaster(d.value)}
-                  className={`py-2 rounded-lg text-base ${disaster === d.value ? 'bg-white' : 'glass-cell opacity-60'}`}>
-                  {d.emoji}
-                </button>
-              ))}
+              {DISASTERS.map(d => {
+                const Icon = DISASTER_ICON[d]
+                return (
+                  <button key={d} onClick={() => setDisaster(d)} title={t(`disaster.${d}`)}
+                    className={`flex items-center justify-center py-2 rounded-lg ${disaster === d ? 'bg-white text-neutral-900' : 'glass-cell text-white/45'}`}>
+                    <Icon size={16} />
+                  </button>
+                )
+              })}
             </div>
           </div>
         </div>

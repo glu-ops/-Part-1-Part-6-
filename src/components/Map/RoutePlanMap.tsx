@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { MapContainer, TileLayer, Marker, Polyline, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import ShelterMarker from './ShelterMarker'
+import BuildingLayer from './BuildingLayer'
 import FloodOverlay from './FloodOverlay'
 import { InvalidateOnMount } from './mapHelpers'
 import { useShelters } from '../../contexts/ShelterContext'
@@ -59,6 +60,7 @@ export default function RoutePlanMap({ dest, path, onSelectDest }: Props) {
           maxZoom={20}
         />
         <InvalidateOnMount />
+        <BuildingLayer />
         <FloodOverlay />
 
         {shelters.map(s => {

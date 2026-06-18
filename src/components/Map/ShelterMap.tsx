@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Marker } from 'react-leaflet'
 import L from 'leaflet'
 import { LocateFixed, Loader2 } from 'lucide-react'
 import ShelterMarker from './ShelterMarker'
+import BuildingLayer from './BuildingLayer'
 import FloodOverlay from './FloodOverlay'
 import ReportOverlay from './ReportOverlay'
 import LocationSearch from './LocationSearch'
@@ -61,6 +62,7 @@ export default function ShelterMap({ onSelect }: Props) {
           maxZoom={20}
         />
 
+        <BuildingLayer />
         <FloodOverlay />
         <ReportOverlay />
 
