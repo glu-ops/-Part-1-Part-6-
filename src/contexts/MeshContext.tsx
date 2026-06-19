@@ -5,6 +5,7 @@ import { usePeerMesh } from '../hooks/usePeerMesh'
 import type { MeshMessage } from '../hooks/usePeerMesh'
 import { useShelters } from './ShelterContext'
 import { useUser } from './UserContext'
+import { useIdentity } from './IdentityContext'
 import { useI18n } from '../i18n'
 import type { CrowdReport } from '../types'
 
@@ -22,6 +23,7 @@ const MeshContext = createContext<MeshCtx | null>(null)
 export function MeshProvider({ children }: { children: ReactNode }) {
   const { userLoc } = useUser()
   const { mergeReport } = useShelters()
+  const { myId, name } = useIdentity()
   const { t } = useI18n()
 
   const [toast, setToast] = useState<{ kind: 'sos' | 'done'; text: string } | null>(null)
@@ -35,7 +37,7 @@ export function MeshProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const onSos = useCallback((m: MeshMessage) => {
-    showToast('sos', t('mesh.sosReceived', { id: m.senderId.slice(0, 6) }))
+    showToast('sos', t('mesh.sosReceived', { id: m.senderName || m.senderId.slice(0, 6) }))
     setSosFlashId(m.senderId)
     setTimeout(() => setSosFlashId(null), 6000)
   }, [showToast, t])
@@ -47,7 +49,7 @@ export function MeshProvider({ children }: { children: ReactNode }) {
     }
   }, [mergeReport, showToast, t])
 
-  const mesh = usePeerMesh({ myPos: userLoc, onSos, onReport })
+  const mesh = usePeerMesh({ fixedId: myId, myName: name, myPos: userLoc, onSos, onReport })
 
   return (
     <MeshContext.Provider value={{ ...mesh, sosFlashId }}>

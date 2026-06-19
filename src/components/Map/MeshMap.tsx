@@ -72,7 +72,8 @@ export default function MeshMap({ myPos, peers, flashId, meLabel, noPosLabel }: 
           <Marker key={p.id} position={[p.lat!, p.lng!]} icon={peerIcon(p.id === flashId)}>
             <Popup>
               <div className="text-xs">
-                <div className="font-mono font-semibold">{p.id.slice(0, 8)}…</div>
+                <div className="font-semibold">{p.name || `${p.id.slice(0, 8)}…`}</div>
+                {p.name && <div className="font-mono text-[10px] text-neutral-400">{p.id.slice(0, 10)}…</div>}
                 {p.nearestLabel ?? noPosLabel}
               </div>
             </Popup>
