@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Droplets, Utensils, Heart, Zap, Navigation, X, Clock, Users, MapPin } from 'lucide-react'
+import { Droplets, Utensils, Heart, Zap, Navigation, X, Clock, Users, MapPin, ChevronDown } from 'lucide-react'
 import ShelterMap from '../components/Map/ShelterMap'
 import RiskPanel from '../components/RiskPanel'
 import StatusBadge from '../components/ShelterCard/StatusBadge'
@@ -9,6 +9,8 @@ import { useUser } from '../contexts/UserContext'
 import { useI18n } from '../i18n'
 import { getOverallStatus, walkMinutes } from '../utils/scoring'
 import { TIME_HORIZON, SIM_LABEL_KEY } from '../disasters'
+import { assessAllZones, RISK_COLOR } from '../utils/risk'
+import type { RiskLevel } from '../utils/risk'
 import type { Shelter, OverallStatus } from '../types'
 
 const RES = [
@@ -53,9 +55,18 @@ export default function HomePage() {
   const { t } = useI18n()
   const nav = useNavigate()
   const [selected, setSelected] = useState<Shelter | null>(null)
+  const [legendOpen, setLegendOpen] = useState(true)
 
   // 切換災害時重置時間軸（各災害時間尺度不同）
   useEffect(() => { setTimeOffset(0) }, [disaster, setTimeOffset])
+
+  // 區域風險各等級數量（圖例用）
+  const zoneRisks = useMemo(() => assessAllZones(disaster), [disaster])
+  const zoneCounts = useMemo(() => {
+    const c: Record<RiskLevel, number> = { low: 0, caution: 0, high: 0, danger: 0 }
+    zoneRisks.forEach(r => { c[r.level]++ })
+    return c
+  }, [zoneRisks])
 
   const horizon = TIME_HORIZON[disaster]
   const step = Math.max(1, Math.round(horizon / 36))
@@ -107,52 +118,91 @@ export default function HomePage() {
         <p className="text-[11px] text-white/80 text-right mt-1 num">{fmtTime(timeOffset)}</p>
       </div>
 
-      {/* 左下：圖例 + 統計 */}
-      <div className="absolute bottom-20 left-3 z-[500] glass rounded-2xl px-3 py-2.5 space-y-1.5 lg:bottom-4 lg:left-4">
-          {([
-            { color: '#22c55e', status: 'safe' as const,    key: 'common.safe' },
-            { color: '#f4b740', status: 'caution' as const, key: 'common.caution' },
-            { color: '#ef4444', status: 'danger' as const,  key: 'common.dangerOrNa' },
-          ]).map(l => {
-            const count = shelters.filter(s => {
-              if (s.not_suitable_for.includes(disaster)) return l.status === 'danger'
-              return getOverallStatus(s, disaster) === l.status
-            }).length
-            return (
-              <div key={l.key} className="flex items-center gap-2 text-[11px] text-white/75">
-                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: l.color, boxShadow: `0 0 8px ${l.color}` }} />
-                <span>{t(l.key)}</span>
-                <span className="ml-auto text-white/45 num text-[11px]">{count}</span>
-              </div>
-            )
-          })}
-          <div className="flex items-center gap-2 text-[11px] text-white/65 pt-1 border-t border-white/10">
-            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-white/90" style={{ boxShadow: '0 0 8px rgba(255,255,255,.6)' }} />
-            <span>{t('home.legendMine')}</span>
-          </div>
-          <div className="flex items-center gap-2 text-[11px] text-white/65">
-            <span className="w-2.5 h-2.5 flex-shrink-0 bg-white/70 rotate-45" />
-            <span>{t('home.legendReport')}</span>
-          </div>
-          {disaster === 'flood' && timeOffset > 0 && (
-            <div className="flex items-center gap-2 text-[11px] text-white/65">
-              <span className="w-2.5 h-2.5 flex-shrink-0 border border-white/60 bg-white/15" />
-              <span>{t('home.legendFlood')}</span>
+      {/* 左下：圖例（依圖層分組；形狀=圖層、顏色=嚴重度；可收合） */}
+      <div className="absolute bottom-20 left-3 z-[500] glass rounded-2xl px-3 py-2.5 w-44 max-h-[55vh] overflow-y-auto no-scrollbar lg:bottom-4 lg:left-4">
+        <button onClick={() => setLegendOpen(o => !o)} className="flex items-center gap-2 w-full text-[11px] font-semibold text-white/75">
+          <span>{t('legend.title')}</span>
+          <ChevronDown size={13} className={`ml-auto text-white/45 transition-transform ${legendOpen ? 'rotate-180' : ''}`} />
+        </button>
+
+        {legendOpen && (
+          <div className="space-y-2.5 mt-2">
+            {/* 避難所：發光圓點 */}
+            <div className="space-y-1">
+              <p className="text-[9px] text-white/35 uppercase tracking-wider">{t('legend.shelters')}</p>
+              {([
+                { color: '#22c55e', status: 'safe' as const,    key: 'common.safe' },
+                { color: '#f4b740', status: 'caution' as const, key: 'common.caution' },
+                { color: '#ef4444', status: 'danger' as const,  key: 'common.dangerOrNa' },
+              ]).map(l => {
+                const count = shelters.filter(s =>
+                  s.not_suitable_for.includes(disaster) ? l.status === 'danger' : getOverallStatus(s, disaster) === l.status,
+                ).length
+                return (
+                  <div key={l.key} className="flex items-center gap-2 text-[11px] text-white/70">
+                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: l.color, boxShadow: `0 0 8px ${l.color}` }} />
+                    <span>{t(l.key)}</span>
+                    <span className="ml-auto text-white/40 num">{count}</span>
+                  </div>
+                )
+              })}
             </div>
-          )}
-          {disaster === 'earthquake' && (
-            <>
-              <div className="flex items-center gap-2 text-[11px] text-white/65 pt-1 border-t border-white/10">
-                <span className="w-2.5 h-2.5 flex-shrink-0" style={{ background: '#ef4444' }} />
-                <span>{t('home.legendCollapse')}</span>
+
+            {/* 區域風險：空心虛線環（地震/淹水） */}
+            {zoneRisks.length > 0 && (
+              <div className="space-y-1 pt-1.5 border-t border-white/10">
+                <p className="text-[9px] text-white/35 uppercase tracking-wider">{t('legend.zoneRisk')}</p>
+                {(['danger', 'high', 'caution', 'low'] as RiskLevel[]).map(lvl => (
+                  <div key={lvl} className="flex items-center gap-2 text-[11px] text-white/70">
+                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 border-2 border-dashed" style={{ borderColor: RISK_COLOR[lvl] }} />
+                    <span>{t(`risk.level.${lvl}`)}</span>
+                    <span className="ml-auto text-white/40 num">{zoneCounts[lvl]}</span>
+                  </div>
+                ))}
               </div>
-              <div className="flex items-center gap-2 text-[11px] text-white/65">
-                <span className="w-2.5 h-2.5 flex-shrink-0" style={{ background: '#f97316' }} />
-                <span>{t('home.legendAtRisk')}</span>
+            )}
+
+            {/* 建物受損：實心方塊（地震，逐棟） */}
+            {disaster === 'earthquake' && (
+              <div className="space-y-1 pt-1.5 border-t border-white/10">
+                <p className="text-[9px] text-white/35 uppercase tracking-wider">{t('legend.buildings')}</p>
+                <div className="flex items-center gap-2 text-[11px] text-white/70">
+                  <span className="w-2.5 h-2.5 flex-shrink-0 rounded-[2px]" style={{ background: '#ef4444' }} />
+                  <span>{t('home.legendCollapse')}</span>
+                </div>
+                <div className="flex items-center gap-2 text-[11px] text-white/70">
+                  <span className="w-2.5 h-2.5 flex-shrink-0 rounded-[2px]" style={{ background: '#f97316' }} />
+                  <span>{t('home.legendAtRisk')}</span>
+                </div>
               </div>
-            </>
-          )}
-        </div>
+            )}
+
+            {/* 淹水蔓延：白色虛線圈（淹水） */}
+            {disaster === 'flood' && (
+              <div className="space-y-1 pt-1.5 border-t border-white/10">
+                <p className="text-[9px] text-white/35 uppercase tracking-wider">{t('legend.flood')}</p>
+                <div className="flex items-center gap-2 text-[11px] text-white/70">
+                  <span className="w-2.5 h-2.5 flex-shrink-0 rounded-full border border-dashed border-white/60 bg-white/15" />
+                  <span>{t('home.legendFlood')}</span>
+                </div>
+              </div>
+            )}
+
+            {/* 其他：白圓點 / 白菱形 */}
+            <div className="space-y-1 pt-1.5 border-t border-white/10">
+              <p className="text-[9px] text-white/35 uppercase tracking-wider">{t('legend.other')}</p>
+              <div className="flex items-center gap-2 text-[11px] text-white/70">
+                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-white/90" style={{ boxShadow: '0 0 8px rgba(255,255,255,.6)' }} />
+                <span>{t('home.legendMine')}</span>
+              </div>
+              <div className="flex items-center gap-2 text-[11px] text-white/70">
+                <span className="w-2.5 h-2.5 flex-shrink-0 bg-white/70 rotate-45" />
+                <span>{t('home.legendReport')}</span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* ─── 避難所資訊卡（行動：底部浮卡；桌面：右側浮卡） ─── */}
       {selected && selStatus && (
