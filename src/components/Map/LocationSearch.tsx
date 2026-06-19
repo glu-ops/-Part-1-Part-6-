@@ -18,30 +18,37 @@ export default function LocationSearch({ onSelect, placeholder }: Props) {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const requestSeq = useRef(0)
 
   // debounce 搜尋
   useEffect(() => {
     const term = q.trim()
     if (term.length < 2) {
+      abortRef.current?.abort()
+      requestSeq.current += 1
       setResults([])
       setError(null)
+      setOpen(false)
+      setLoading(false)
       return
     }
     const timer = setTimeout(async () => {
       abortRef.current?.abort()
       const ctrl = new AbortController()
       abortRef.current = ctrl
+      const requestId = ++requestSeq.current
       setLoading(true)
       setError(null)
       try {
         const res = await geocode(term, ctrl.signal)
+        if (requestId !== requestSeq.current) return
         setResults(res)
         setOpen(true)
         if (res.length === 0) setError(t('search.notFound'))
       } catch (e) {
-        if ((e as Error).name !== 'AbortError') setError(t('search.fail'))
+        if (requestId === requestSeq.current && (e as Error).name !== 'AbortError') setError(t('search.fail'))
       } finally {
-        setLoading(false)
+        if (requestId === requestSeq.current) setLoading(false)
       }
     }, 450)
     return () => clearTimeout(timer)

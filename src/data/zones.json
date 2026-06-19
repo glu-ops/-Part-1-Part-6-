@@ -1,0 +1,13 @@
+[
+  { "id": "Z01", "name": "成大里", "center": { "lat": 22.9992, "lng": 120.2210 }, "floodPotential": 3, "drainage": "low", "nearRiver": false, "coastal": false, "siteAmp": 1.90, "note": "東寧/勝利/育樂路一帶，多地下道" },
+  { "id": "Z02", "name": "東安里", "center": { "lat": 22.9940, "lng": 120.2250 }, "floodPotential": 3, "drainage": "low", "nearRiver": false, "coastal": false, "siteAmp": 2.25, "note": "東寧地下道周邊，軟弱地盤" },
+  { "id": "Z03", "name": "東門里", "center": { "lat": 22.9900, "lng": 120.2140 }, "floodPotential": 2, "drainage": "med", "nearRiver": false, "coastal": false, "siteAmp": 1.50, "note": "東門城、前鋒路" },
+  { "id": "Z04", "name": "大同里", "center": { "lat": 22.9780, "lng": 120.2100 }, "floodPotential": 3, "drainage": "low", "nearRiver": true, "coastal": false, "siteAmp": 2.40, "note": "大同地下道、近竹溪沖積層" },
+  { "id": "Z05", "name": "泉南里", "center": { "lat": 22.9820, "lng": 120.2165 }, "floodPotential": 2, "drainage": "med", "nearRiver": true, "coastal": false, "siteAmp": 1.80, "note": "長榮路、樹林街" },
+  { "id": "Z06", "name": "仁和里", "center": { "lat": 22.9720, "lng": 120.2225 }, "floodPotential": 3, "drainage": "low", "nearRiver": true, "coastal": false, "siteAmp": 2.60, "note": "竹溪流域、地勢低、軟弱沖積層" },
+  { "id": "Z07", "name": "崇德里", "center": { "lat": 22.9845, "lng": 120.2305 }, "floodPotential": 1, "drainage": "high", "nearRiver": false, "coastal": false, "siteAmp": 1.00, "note": "崇德路、地勢較高、地盤較硬" },
+  { "id": "Z08", "name": "莊敬里", "center": { "lat": 22.9910, "lng": 120.2385 }, "floodPotential": 1, "drainage": "med", "nearRiver": false, "coastal": false, "siteAmp": 1.25, "note": "中華東路一帶" },
+  { "id": "Z09", "name": "東光里", "center": { "lat": 22.9965, "lng": 120.2395 }, "floodPotential": 1, "drainage": "med", "nearRiver": false, "coastal": false, "siteAmp": 1.15, "note": "東光國小、小東路東段" },
+  { "id": "Z10", "name": "德高里", "center": { "lat": 22.9760, "lng": 120.2360 }, "floodPotential": 2, "drainage": "med", "nearRiver": false, "coastal": false, "siteAmp": 1.45, "note": "德高厝、南紡周邊" },
+  { "id": "Z11", "name": "龍山里", "center": { "lat": 22.9990, "lng": 120.2480 }, "floodPotential": 1, "drainage": "high", "nearRiver": false, "coastal": false, "siteAmp": 0.80, "note": "東區東緣、地勢高、地盤硬" }
+]

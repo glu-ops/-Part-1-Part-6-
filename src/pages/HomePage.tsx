@@ -1,12 +1,14 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Droplets, Utensils, Heart, Zap, Navigation, X, Clock, Users, MapPin } from 'lucide-react'
 import ShelterMap from '../components/Map/ShelterMap'
+import RiskPanel from '../components/RiskPanel'
 import StatusBadge from '../components/ShelterCard/StatusBadge'
 import { useShelters } from '../contexts/ShelterContext'
 import { useUser } from '../contexts/UserContext'
 import { useI18n } from '../i18n'
 import { getOverallStatus, walkMinutes } from '../utils/scoring'
+import { TIME_HORIZON, SIM_LABEL_KEY } from '../disasters'
 import type { Shelter, OverallStatus } from '../types'
 
 const RES = [
@@ -52,6 +54,18 @@ export default function HomePage() {
   const nav = useNavigate()
   const [selected, setSelected] = useState<Shelter | null>(null)
 
+  // 切換災害時重置時間軸（各災害時間尺度不同）
+  useEffect(() => { setTimeOffset(0) }, [disaster, setTimeOffset])
+
+  const horizon = TIME_HORIZON[disaster]
+  const step = Math.max(1, Math.round(horizon / 36))
+  const fmtTime = (n: number) => {
+    if (n === 0) return t('common.now')
+    if (n < 60) return t('home.afterMin', { n })
+    const h = Math.floor(n / 60), m = n % 60
+    return m ? t('home.afterHM', { h, m }) : t('home.afterHour', { h })
+  }
+
   const dangerCount = shelters.filter(s => {
     if (s.not_suitable_for.includes(disaster)) return true
     return getOverallStatus(s, disaster) === 'danger'
@@ -70,6 +84,9 @@ export default function HomePage() {
       {/* 地圖背景（滿版，浮層 UI 疊於其上） */}
       <ShelterMap onSelect={setSelected} />
 
+      {/* 區域風險評估面板（地震/淹水） */}
+      <RiskPanel />
+
       {/* 災害警告列（浮動 chip） */}
       {dangerCount > 0 && (
         <div className="absolute z-[500] top-16 left-1/2 -translate-x-1/2 lg:top-20 glass rounded-full px-4 py-1.5 flex items-center gap-2 text-xs text-status-danger whitespace-nowrap max-w-[calc(100vw-1.5rem)] overflow-hidden">
@@ -80,15 +97,14 @@ export default function HomePage() {
 
       {/* 右上：災害蔓延預測 / 時間模擬 */}
       <div className="absolute top-32 right-3 z-[500] glass rounded-2xl px-3 py-2.5 w-44 lg:top-20 lg:right-4">
-        <p className="text-[11px] text-white/55 mb-1.5">{t('home.timeSim')}</p>
+        <p className="text-[11px] text-white/55 mb-0.5">{t('home.timeSim')}</p>
+        <p className="text-[10px] text-white/40 mb-1.5">{t(SIM_LABEL_KEY[disaster])}</p>
         <input
-          type="range" min={0} max={30} step={1} value={timeOffset}
+          type="range" min={0} max={horizon} step={step} value={timeOffset}
           onChange={e => setTimeOffset(+e.target.value)}
           className="w-full h-1 cursor-pointer"
         />
-        <p className="text-[11px] text-white/80 text-right mt-1 num">
-          {timeOffset === 0 ? t('common.now') : t('home.afterMin', { n: timeOffset })}
-        </p>
+        <p className="text-[11px] text-white/80 text-right mt-1 num">{fmtTime(timeOffset)}</p>
       </div>
 
       {/* 左下：圖例 + 統計 */}
@@ -123,6 +139,18 @@ export default function HomePage() {
               <span className="w-2.5 h-2.5 flex-shrink-0 border border-white/60 bg-white/15" />
               <span>{t('home.legendFlood')}</span>
             </div>
+          )}
+          {disaster === 'earthquake' && (
+            <>
+              <div className="flex items-center gap-2 text-[11px] text-white/65 pt-1 border-t border-white/10">
+                <span className="w-2.5 h-2.5 flex-shrink-0" style={{ background: '#ef4444' }} />
+                <span>{t('home.legendCollapse')}</span>
+              </div>
+              <div className="flex items-center gap-2 text-[11px] text-white/65">
+                <span className="w-2.5 h-2.5 flex-shrink-0" style={{ background: '#f97316' }} />
+                <span>{t('home.legendAtRisk')}</span>
+              </div>
+            </>
           )}
         </div>
 

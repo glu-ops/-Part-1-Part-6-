@@ -11,6 +11,7 @@ export default defineConfig({
         name: '府城守護網',
         short_name: '守護網',
         description: '台南東區智慧防災系統',
+        lang: 'zh-TW',
         theme_color: '#1e40af',
         background_color: '#0a1628',
         display: 'standalone',
@@ -22,12 +23,14 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,json,png,svg,ico}'],
+        // buildings-east.json 約 3.2MB，超過 Workbox 預設 2MB 上限；放寬以利離線快取
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/.*\.tile\.openstreetmap\.org\/.*/,
+            urlPattern: /^https:\/\/[a-d]\.basemaps\.cartocdn\.com\/.*/,
             handler: 'CacheFirst',
             options: {
-              cacheName: 'osm-tiles',
+              cacheName: 'carto-tiles',
               expiration: { maxEntries: 500, maxAgeSeconds: 30 * 24 * 60 * 60 },
             },
           },

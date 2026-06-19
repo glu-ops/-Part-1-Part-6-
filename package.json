@@ -8,7 +8,9 @@
     "build": "node scripts/gen-icons.mjs && tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx",
-    "gen-icons": "node scripts/gen-icons.mjs"
+    "gen-icons": "node scripts/gen-icons.mjs",
+    "fetch-buildings": "node scripts/fetch-buildings.mjs",
+    "annotate-buildings": "node scripts/annotate-buildings.mjs"
   },
   "dependencies": {
     "leaflet": "^1.9.4",

@@ -1,0 +1,23 @@
+{
+  "_note": "即時災害資料（本地模擬，標示為 mock）。實務上由 CWA 地震報告 / 水利署即時站台 feed。",
+  "earthquake": {
+    "epicenter": { "lat": 22.9500, "lng": 120.2550, "place": "台南市東區南方近郊" },
+    "magnitude": 6.1,
+    "depth_km": 10,
+    "aftershocks_1h": 4,
+    "origin_time": "2026-06-19T14:05:00+08:00"
+  },
+  "flood": {
+    "rain_now_mmhr": 52,
+    "rain_1h": 68,
+    "rain_3h": 145,
+    "rain_6h": 225,
+    "rain_24h": 318,
+    "river": { "name": "竹溪", "level_ratio": 0.88 },
+    "tide_high": false,
+    "tide_ratio": 0.45,
+    "pump_abnormal": true,
+    "gate_closed": false,
+    "updated_at": "2026-06-19T14:30:00+08:00"
+  }
+}

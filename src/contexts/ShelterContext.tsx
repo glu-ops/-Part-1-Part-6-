@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useMemo } from 'react'
+import { createContext, useContext, useState, useMemo, useRef, useCallback } from 'react'
 import type { ReactNode } from 'react'
 import type { Shelter, CrowdReport } from '../types'
 import sheltersData from '../data/shelters.json'
@@ -6,10 +6,7 @@ import reportsData from '../data/reports.json'
 
 /**
  * 每分鐘湧入人數（人/分）。
- * 設計目標：t=15 時至少 3 個 marker 從 safe 降為 caution：
- *   TN-E-006 (cap 200, cur 60)  → 60+7×15=165 → 82.5% → occ penalty → safe→caution ✓
- *   TN-E-010 (cap 320, cur 95)  → 95+11×15=260 → 81.3% → safe→caution ✓
- *   TN-E-016 (cap 240, cur 30)  → 30+11×15=195 → 81.3% → safe→caution ✓
+ * 設計目標：t=15 時至少 3 個 marker 從 safe 降為 caution。
  */
 const SURGE_RATES: Record<string, number> = {
   'TN-E-001': 15, 'TN-E-002': 8,  'TN-E-003': 10,
@@ -24,30 +21,96 @@ export function getSurgeRate(shelterId: string): number {
   return SURGE_RATES[shelterId] ?? 8
 }
 
+// ── 持久化的本機使用者 ID（投票/作者身分；跨 reload 穩定） ──
+const UID_KEY = 'guardian_uid'
+export function getClientId(): string {
+  let id = localStorage.getItem(UID_KEY)
+  if (!id) { id = `u-${Math.random().toString(36).slice(2, 9)}`; localStorage.setItem(UID_KEY, id) }
+  return id
+}
+
+const STORE_KEY = 'guardian_reports'
+
+function normalize(r: Partial<CrowdReport> & { id: string }): CrowdReport {
+  return {
+    shelter_id: r.shelter_id ?? null,
+    type: r.type ?? 'disaster',
+    severity: r.severity ?? 'yellow',
+    note: r.note ?? '',
+    reported_at: r.reported_at ?? new Date().toISOString(),
+    lat: r.lat ?? 0,
+    lng: r.lng ?? 0,
+    photos: r.photos ?? [],
+    upVoters: r.upVoters ?? [],
+    downVoters: r.downVoters ?? [],
+    status: r.status ?? 'active',
+    resolvedNote: r.resolvedNote,
+    author: r.author,
+    version: r.version ?? 1,
+    id: r.id,
+  }
+}
+
+function uniq(a: string[] = [], b: string[] = []): string[] {
+  return [...new Set([...a, ...b])]
+}
+
+/** 合併兩筆同 id 回報：投票取聯集、狀態取已處理優先、版本取大 */
+function mergeOne(a: CrowdReport, b: CrowdReport): CrowdReport {
+  const newer = b.version >= a.version ? b : a
+  return {
+    ...newer,
+    upVoters: uniq(a.upVoters, b.upVoters),
+    downVoters: uniq(a.downVoters, b.downVoters),
+    status: a.status === 'resolved' || b.status === 'resolved' ? 'resolved' : 'active',
+    resolvedNote: b.resolvedNote ?? a.resolvedNote,
+    version: Math.max(a.version, b.version),
+  }
+}
+
 interface ShelterCtx {
   shelters: Shelter[]
-  reports: CrowdReport[]
+  reports: CrowdReport[]            // 含已處理（tombstone），UI 自行過濾
+  activeReports: CrowdReport[]      // status !== 'resolved'
   timeOffset: number
   setTimeOffset: (n: number) => void
-  addReport: (r: CrowdReport) => void
+  addReport: (r: CrowdReport) => boolean
+  mergeReport: (r: CrowdReport) => { changed: boolean; merged: CrowdReport }
+  voteReport: (id: string, dir: 'up' | 'down', voterId: string) => CrowdReport | null
+  resolveReport: (id: string, note?: string) => CrowdReport | null
 }
 
 const ShelterContext = createContext<ShelterCtx | null>(null)
 
 export function ShelterProvider({ children }: { children: ReactNode }) {
   const [timeOffset, setTimeOffset] = useState(0)
-  const [localReports, setLocalReports] = useState<CrowdReport[]>(() => {
+
+  const [reports, setReports] = useState<CrowdReport[]>(() => {
+    const byId = new Map<string, CrowdReport>()
+    for (const r of reportsData as CrowdReport[]) byId.set(r.id, normalize(r))
     try {
-      return JSON.parse(localStorage.getItem('guardian_reports') ?? '[]')
-    } catch {
-      return []
-    }
+      const saved = JSON.parse(localStorage.getItem(STORE_KEY) ?? '[]') as CrowdReport[]
+      for (const r of saved) {
+        const n = normalize(r)
+        byId.set(r.id, byId.has(r.id) ? mergeOne(byId.get(r.id)!, n) : n)
+      }
+    } catch { /* ignore */ }
+    return [...byId.values()]
   })
 
-  const reports = useMemo(
-    () => [...(reportsData as CrowdReport[]), ...localReports],
-    [localReports],
-  )
+  const reportsRef = useRef(reports)
+  reportsRef.current = reports
+
+  const persist = useCallback((next: CrowdReport[]) => {
+    reportsRef.current = next
+    setReports(next)
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify(next))
+      return true
+    } catch {
+      return false
+    }
+  }, [])
 
   const shelters = useMemo(() => {
     return (sheltersData as Shelter[]).map(s => {
@@ -56,23 +119,63 @@ export function ShelterProvider({ children }: { children: ReactNode }) {
         ...s,
         capacity: {
           ...s.capacity,
-          current_estimate: Math.min(
-            s.capacity.physical,
-            s.capacity.current_estimate + surge,
-          ),
+          current_estimate: Math.min(s.capacity.physical, s.capacity.current_estimate + surge),
         },
       }
     })
   }, [timeOffset])
 
-  function addReport(r: CrowdReport) {
-    const updated = [...localReports, r]
-    setLocalReports(updated)
-    localStorage.setItem('guardian_reports', JSON.stringify(updated))
-  }
+  const addReport = useCallback((r: CrowdReport) => {
+    const n = normalize(r)
+    const cur = reportsRef.current
+    const i = cur.findIndex(x => x.id === n.id)
+    if (i === -1) return persist([...cur, n])
+    const next = [...cur]
+    next[i] = mergeOne(cur[i], n)
+    return persist(next)
+  }, [persist])
+
+  // 來自 Mesh 的回報 → 合併；回傳是否有變動（決定要不要再轉發）
+  const mergeReport = useCallback((incoming: CrowdReport) => {
+    const n = normalize(incoming)
+    const cur = reportsRef.current
+    const i = cur.findIndex(r => r.id === n.id)
+    if (i === -1) { persist([...cur, n]); return { changed: true, merged: n } }
+    const merged = mergeOne(cur[i], n)
+    const changed = JSON.stringify(merged) !== JSON.stringify(cur[i])
+    if (changed) { const next = [...cur]; next[i] = merged; persist(next) }
+    return { changed, merged }
+  }, [persist])
+
+  const voteReport = useCallback((id: string, dir: 'up' | 'down', voterId: string): CrowdReport | null => {
+    const cur = reportsRef.current
+    const i = cur.findIndex(r => r.id === id)
+    if (i === -1) return null
+    const r = cur[i]
+    const up = new Set(r.upVoters ?? []); const down = new Set(r.downVoters ?? [])
+    if (dir === 'up') { down.delete(voterId); up.has(voterId) ? up.delete(voterId) : up.add(voterId) }
+    else              { up.delete(voterId);  down.has(voterId) ? down.delete(voterId) : down.add(voterId) }
+    const updated: CrowdReport = { ...r, upVoters: [...up], downVoters: [...down], version: r.version + 1 }
+    const next = [...cur]; next[i] = updated; persist(next)
+    return updated
+  }, [persist])
+
+  const resolveReport = useCallback((id: string, note?: string): CrowdReport | null => {
+    const cur = reportsRef.current
+    const i = cur.findIndex(r => r.id === id)
+    if (i === -1) return null
+    const updated: CrowdReport = { ...cur[i], status: 'resolved', resolvedNote: note, version: cur[i].version + 1 }
+    const next = [...cur]; next[i] = updated; persist(next)
+    return updated
+  }, [persist])
+
+  const activeReports = useMemo(() => reports.filter(r => r.status !== 'resolved'), [reports])
 
   return (
-    <ShelterContext.Provider value={{ shelters, reports, timeOffset, setTimeOffset, addReport }}>
+    <ShelterContext.Provider value={{
+      shelters, reports, activeReports, timeOffset, setTimeOffset,
+      addReport, mergeReport, voteReport, resolveReport,
+    }}>
       {children}
     </ShelterContext.Provider>
   )

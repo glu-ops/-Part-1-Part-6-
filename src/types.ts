@@ -43,4 +43,12 @@ export interface CrowdReport {
   reported_at: string
   lat: number
   lng: number
+  // ── F2.8 擴充：照片、查證投票、處理狀態、Mesh 版本 ──
+  photos?: string[]            // 壓縮後的 base64 data URL
+  upVoters?: string[]          // 按讚者 peerId（取聯集去重 → 計數）
+  downVoters?: string[]        // 倒讚者 peerId
+  status?: 'active' | 'resolved'
+  resolvedNote?: string        // 指揮中心處理備註
+  author?: string              // 回報者 peerId
+  version: number              // Mesh 版本號（演變時遞增、舊版丟棄）
 }

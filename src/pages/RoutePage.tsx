@@ -52,25 +52,27 @@ export default function RoutePage() {
   const dest = shelters.find(s => s.shelter_id === destId)
 
   useEffect(() => {
-    if (!dest) { setRoute(null); setRouteError(null); return }
+    if (!dest) { setRoute(null); setRouteError(null); setRouteLoading(false); return }
     const ctrl = new AbortController()
+    let active = true
+    setRoute(null)
     setRouteLoading(true); setRouteError(null)
     getWalkingRoute(userLoc, { lat: dest.lat, lng: dest.lng }, ctrl.signal)
-      .then(setRoute)
+      .then(r => { if (active) setRoute(r) })
       .catch(e => {
-        if ((e as Error).name !== 'AbortError') { setRoute(null); setRouteError(t('route.routeFail')) }
+        if (active && (e as Error).name !== 'AbortError') { setRoute(null); setRouteError(t('route.routeFail')) }
       })
-      .finally(() => setRouteLoading(false))
-    return () => ctrl.abort()
+      .finally(() => { if (active) setRouteLoading(false) })
+    return () => { active = false; ctrl.abort() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dest, userLoc, reload])
 
   const routeWalkMin = route ? Math.max(1, Math.round(route.duration / 60)) : null
   const walkMin = dest ? (routeWalkMin ?? walkMinutes(userLoc.lat, userLoc.lng, dest.lat, dest.lng)) : null
-  const destStatus = dest ? getOverallStatus(dest, disaster) : null
+  const destStatus = dest ? (dest.not_suitable_for.includes(disaster) ? 'danger' : getOverallStatus(dest, disaster)) : null
 
   const arrivalOcc = dest && walkMin != null
-    ? Math.min(100, Math.round((dest.capacity.current_estimate / dest.capacity.physical) * 100) + walkMin * 3)
+    ? Math.min(100, Math.round(((dest.capacity.current_estimate + getSurgeRate(dest.shelter_id) * walkMin) / dest.capacity.physical) * 100))
     : null
   const arrivalStatus = arrivalOcc != null
     ? (arrivalOcc > 90 ? 'danger' : arrivalOcc > 70 ? 'caution' : 'safe') : null

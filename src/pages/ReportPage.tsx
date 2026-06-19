@@ -1,10 +1,13 @@
-import { useState, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { CheckCircle, MapPin, LocateFixed, Loader2, ImagePlus, X } from 'lucide-react'
-import { useShelters } from '../contexts/ShelterContext'
+import { useShelters, getClientId } from '../contexts/ShelterContext'
 import { useUser } from '../contexts/UserContext'
+import { useMesh } from '../contexts/MeshContext'
 import { useI18n } from '../i18n'
 import { useIsDesktop } from '../hooks'
 import LocationPicker from '../components/Map/LocationPicker'
+import ReportCard from '../components/Report/ReportCard'
+import { downscaleImage } from '../utils/image'
 import type { CrowdReport, ReportType, ResourceStatus } from '../types'
 
 const TYPES: { value: ReportType; key: string }[] = [
@@ -19,11 +22,18 @@ const SEV: { value: ResourceStatus; key: string; cls: string }[] = [
   { value: 'red', key: 'report.sev.red', cls: 'border-status-danger text-status-danger' },
 ]
 
+function makeReportId(clientId: string): string {
+  const randomId = globalThis.crypto?.randomUUID?.()
+  return randomId ? `R-${randomId}` : `R-${Date.now()}-${clientId}-${Math.random().toString(36).slice(2, 8)}`
+}
+
 export default function ReportPage() {
-  const { shelters, addReport, reports } = useShelters()
+  const { shelters, addReport, activeReports, voteReport } = useShelters()
   const { userLoc, locateMe, locating } = useUser()
-  const { t, rt } = useI18n()
+  const { shareReport } = useMesh()
+  const { t } = useI18n()
   const isDesktop = useIsDesktop()
+  const cid = getClientId()
   const [type, setType] = useState<ReportType>('crowd')
   const [severity, setSeverity] = useState<ResourceStatus>('green')
   const [shelterId, setShelterId] = useState('')
@@ -31,28 +41,50 @@ export default function ReportPage() {
   const [loc, setLoc] = useState(userLoc)
   const [files, setFiles] = useState<{ url: string; name: string }[]>([])
   const [done, setDone] = useState(false)
+  const [saveWarning, setSaveWarning] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const locTouched = useRef(false)
 
-  function addFiles(list: FileList | null) {
+  useEffect(() => {
+    if (!locTouched.current) setLoc(userLoc)
+  }, [userLoc])
+
+  function setPickedLoc(next: typeof loc) {
+    locTouched.current = true
+    setLoc(next)
+  }
+
+  async function addFiles(list: FileList | null) {
     if (!list) return
-    const next = Array.from(list).map(f => ({ url: URL.createObjectURL(f), name: f.name }))
+    // 壓縮成 base64（可持久化 + 可透過 Mesh 傳遞）
+    const next = await Promise.all(
+      Array.from(list).map(async f => ({ url: await downscaleImage(f), name: f.name })),
+    )
     setFiles(prev => [...prev, ...next])
   }
 
   function submit() {
     const r: CrowdReport = {
-      id: `R${Date.now()}`,
+      id: makeReportId(cid),
       shelter_id: shelterId || null,
       type, severity, note,
       reported_at: new Date().toISOString(),
       lat: loc.lat, lng: loc.lng,
+      photos: files.map(f => f.url),
+      upVoters: [], downVoters: [],
+      status: 'active',
+      author: cid,
+      version: 1,
     }
-    addReport(r)
+    const saved = addReport(r)
+    shareReport(r)   // 透過 Mesh 廣播給其他節點
+    setSaveWarning(!saved)
     setDone(true)
-    setTimeout(() => { setDone(false); setNote(''); setFiles([]) }, 3000)
+    setTimeout(() => { setDone(false); setSaveWarning(false); setNote(''); setFiles([]) }, 3000)
   }
 
-  const recent = reports.slice().reverse().slice(0, 6)
+  const recent = activeReports.slice().reverse().slice(0, 6)
+  const onVote = (id: string, dir: 'up' | 'down') => { const u = voteReport(id, dir, cid); if (u) shareReport(u) }
 
   const panel = (
     <>
@@ -62,9 +94,11 @@ export default function ReportPage() {
 
       <div className="flex-1 lg:overflow-y-auto no-scrollbar px-4 space-y-3 pb-3">
         {done && (
-          <div className="glass-soft rounded-2xl p-3 flex items-center gap-3 border border-status-safe/30">
-            <CheckCircle size={20} className="text-status-safe" />
-            <span className="text-status-safe font-semibold text-sm">{t('report.success')}</span>
+          <div className={`glass-soft rounded-2xl p-3 flex items-center gap-3 border ${saveWarning ? 'border-status-caution/40' : 'border-status-safe/30'}`}>
+            <CheckCircle size={20} className={saveWarning ? 'text-status-caution' : 'text-status-safe'} />
+            <span className={`${saveWarning ? 'text-status-caution' : 'text-status-safe'} font-semibold text-sm`}>
+              {saveWarning ? '已送出，但本機儲存空間不足，重新整理後可能遺失。' : t('report.success')}
+            </span>
           </div>
         )}
 
@@ -110,14 +144,14 @@ export default function ReportPage() {
             <label className="text-xs text-white/45 flex items-center gap-1.5">
               <MapPin size={13} className="text-white/60" />{t('report.location')}
             </label>
-            <button onClick={() => { locateMe().then(setLoc).catch(() => {}) }}
+            <button onClick={() => { locateMe().then(setPickedLoc).catch(() => {}) }}
               className="flex items-center gap-1 text-[11px] text-white glass-cell rounded-full px-2.5 py-1 shrink-0">
               {locating ? <Loader2 size={12} className="animate-spin" /> : <LocateFixed size={12} />}{t('report.locate')}
             </button>
           </div>
           {/* 行動版：內嵌選點地圖 */}
           {!isDesktop && (
-            <LocationPicker value={loc} onChange={setLoc} />
+            <LocationPicker value={loc} onChange={setPickedLoc} />
           )}
           <p className="text-[11px] text-white/45 mt-2 num">{t('report.coords', { lat: loc.lat.toFixed(5), lng: loc.lng.toFixed(5) })}</p>
         </div>
@@ -160,12 +194,7 @@ export default function ReportPage() {
             <div className="space-y-2">
               {recent.map(r => (
                 <div key={r.id} className="glass-cell rounded-xl p-3">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-[10px] glass-cell text-white/55 px-2 py-0.5 rounded-full">{t(`rt.${r.type}`)}</span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full glass-cell ${r.severity === 'green' ? 'text-status-safe' : r.severity === 'yellow' ? 'text-status-caution' : 'text-status-danger'}`}>{t(`report.sev.${r.severity}`)}</span>
-                    <span className="text-[10px] text-white/40 ml-auto">{rt(r.reported_at)}</span>
-                  </div>
-                  {r.note && <p className="text-sm text-white/85">{r.note}</p>}
+                  <ReportCard report={r} clientId={cid} onVote={dir => onVote(r.id, dir)} />
                 </div>
               ))}
             </div>
@@ -187,7 +216,7 @@ export default function ReportPage() {
       {/* 桌面：右側全幅地圖（可點選回報位置 + 顯示避難所/回報/災害範圍） */}
       {isDesktop && (
         <div className="absolute inset-0">
-          <LocationPicker value={loc} onChange={setLoc} className="w-full h-full" showContext />
+          <LocationPicker value={loc} onChange={setPickedLoc} className="w-full h-full" showContext />
         </div>
       )}
 

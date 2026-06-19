@@ -8,6 +8,19 @@ export interface LatLng {
 // 預設位置（台南東區中心）— 取得不到 GPS 時的後備座標
 export const DEFAULT_LOC: LatLng = { lat: 22.993, lng: 120.22 }
 
+/** 兩點間直線距離（公尺，Haversine） */
+export function distanceMeters(a: LatLng, b: LatLng): number {
+  const R = 6371000
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((a.lat * Math.PI) / 180) *
+      Math.cos((b.lat * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s)))
+}
+
 // 台南範圍，讓搜尋結果偏向在地（左, 上, 右, 下 = 西經,北緯,東經,南緯）
 const TAINAN_VIEWBOX = '120.05,23.10,120.40,22.85'
 
