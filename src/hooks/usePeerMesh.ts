@@ -95,6 +95,7 @@ export function usePeerMesh({ fixedId, myName, myPos, onSosEvent, onReport, getS
   }, [messages, chatKey])
 
   const peerRef        = useRef<any>(null)
+  const retryTimerRef  = useRef<ReturnType<typeof setTimeout> | undefined>(undefined) // 固定 ID 被占用 → 重試
   const connsRef       = useRef<Map<string, any>>(new Map())
   const rescueConnRef  = useRef<any>(null)        // B 層往指揮中心的連線（不列入 peers）
   const reportSeenRef  = useRef<Set<string>>(new Set()) // 演變型訊息 msgId 去重（report/sosEvent 共用）
@@ -225,11 +226,16 @@ export function usePeerMesh({ fixedId, myName, myPos, onSosEvent, onReport, getS
   }, [])
 
   // ── 初始化 Peer ───────────────────────────────────────
+  // 固定 ID（指揮中心 / 自訂 ID）被占用（unavailable-id）時：可能是前一個持有者剛
+  // 斷線、broker 尚未釋放（約 30–60 秒）。每 5 秒自動重試搶回，成功即上線、無需手動。
+  const RETRY_MS = 5000
   useEffect(() => {
     let cancelled = false
-    import('peerjs').then(({ Peer }) => {
-      if (cancelled || peerRef.current) return
-      const peer = fixedId ? new Peer(fixedId) : new Peer()
+    let PeerCtor: any = null
+
+    const boot = () => {
+      if (cancelled || peerRef.current || !PeerCtor) return
+      const peer = fixedId ? new PeerCtor(fixedId) : new PeerCtor()
       peerRef.current = peer
       peer.on('open', (id: string) => {
         myIdRef.current = id; setMyId(id); setLoading(false); setError(null)
@@ -237,14 +243,29 @@ export function usePeerMesh({ fixedId, myName, myPos, onSosEvent, onReport, getS
         if (!isRescue) getKnownPeers().forEach(p => dialPeer(p.id, true))
       })
       peer.on('error', (err: any) => {
-        setError(err?.type ?? err?.message ?? 'peer-error')
+        const type = err?.type ?? err?.message ?? 'peer-error'
+        setError(type)
         setLoading(false)
+        // 固定 ID 被占用 → 銷毀後排程重試（直到搶回為止）
+        if (type === 'unavailable-id' && fixedId && !cancelled) {
+          try { peer.destroy() } catch { /* ignore */ }
+          peerRef.current = null
+          clearTimeout(retryTimerRef.current)
+          retryTimerRef.current = setTimeout(boot, RETRY_MS)
+        }
       })
       peer.on('disconnected', () => { try { peer.reconnect() } catch { /* ignore */ } })
       peer.on('connection', (conn: any) => registerRef.current(conn))
+    }
+
+    import('peerjs').then(({ Peer }) => {
+      if (cancelled) return
+      PeerCtor = Peer
+      boot()
     })
     return () => {
       cancelled = true
+      clearTimeout(retryTimerRef.current)
       peerRef.current?.destroy()
       peerRef.current = null
       connsRef.current.clear()
