@@ -67,7 +67,7 @@ function genId(): string {
 
 /**
  * Mesh P2P 核心（F2.7）：
- * - 固定身份：市民端以 sessionStorage 的固定 ID 起 Peer，reload 不變、可自動重連。
+ * - 固定身份：市民端以 localStorage 的固定 ID 起 Peer，關閉重開不變、可自動重連。
  * - 名片交換：連線即互換 {name}，UI 全程顯示名稱而非裸 ID。
  * - 多 peer 連線管理（Map<peerId, conn>），離線對象保留在清單灰顯。
  * - 位置共享：連上即送、之後每 30 秒廣播。
@@ -85,13 +85,13 @@ export function usePeerMesh({ fixedId, myName, myPos, onSosEvent, onReport, getS
   const [peers, setPeers]     = useState<PeerInfo[]>(() =>
     isRescue ? [] : getKnownPeers().map(p => ({ id: p.id, name: p.name, connectedAt: '', online: false })),
   )
-  // 聊天訊息持久化（per-tab：sessionStorage 隨分頁；刷新後保留）
+  // 聊天訊息持久化（localStorage：關閉分頁重開仍保留；以節點 ID 為 key 區分身份）
   const chatKey = `guardian_chat_${fixedId ?? 'anon'}`
   const [messages, setMessages] = useState<MeshMessage[]>(() => {
-    try { return JSON.parse(sessionStorage.getItem(chatKey) ?? '[]') as MeshMessage[] } catch { return [] }
+    try { return JSON.parse(localStorage.getItem(chatKey) ?? '[]') as MeshMessage[] } catch { return [] }
   })
   useEffect(() => {
-    try { sessionStorage.setItem(chatKey, JSON.stringify(messages.slice(-200))) } catch { /* 容量不足忽略 */ }
+    try { localStorage.setItem(chatKey, JSON.stringify(messages.slice(-200))) } catch { /* 容量不足忽略 */ }
   }, [messages, chatKey])
 
   const peerRef        = useRef<any>(null)

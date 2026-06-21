@@ -1,32 +1,60 @@
 // 市民端身份工具：固定節點 ID、使用者名稱、已知對象（供重連）。
 //
-// 為何用 sessionStorage 而非 localStorage：
-// 1) 重新整理（reload）後 sessionStorage 仍保留 → 滿足「ID/名字不變」。
-// 2) sessionStorage 以「分頁」為範圍 → 同一瀏覽器開兩個分頁＝兩個不同身份，
-//    PeerJS 才不會因兩分頁拿到同一固定 ID 而撞號（unavailable-id）。
-//    這正是兩分頁互測 demo 能跑的關鍵。
+// 儲存策略：localStorage（關閉分頁/視窗後仍保留 → 像「登入」一樣持久，
+// 重開頁面身份不變、自動重連之前連過的人）。
+//
+// 同機多人測試：localStorage 為「整個瀏覽器共用」，預設兩個分頁＝同一身份。
+// 若要在同一台機器同時測多個獨立又持久的身份，網址加 ?u=<代號>
+// （例：/?u=2、/?u=hua），各代號各自一份持久身份，互不衝突。
+// 真實手機/電腦各自是不同瀏覽器，天然分開，不受影響。
 
-const ID_KEY = 'guardian_peer_id'
-const NAME_KEY = 'guardian_name'
-const PEERS_KEY = 'guardian_known_peers'
+function profileSuffix(): string {
+  try {
+    const u = new URLSearchParams(window.location.search).get('u')
+    const clean = (u ?? '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 16)
+    return clean ? `__${clean}` : ''
+  } catch {
+    return ''
+  }
+}
+const SFX = profileSuffix()
 
-/** 固定節點 ID（首次產生後存於 sessionStorage，reload 不變）。 */
+const ID_KEY = `guardian_peer_id${SFX}`
+const NAME_KEY = `guardian_name${SFX}`
+const PEERS_KEY = `guardian_known_peers${SFX}`
+
+// 指揮中心保留 ID，使用者不可佔用
+const RESERVED_ID = 'tainan-guardian-rescue'
+
+/** 固定節點 ID（首次產生後存於 localStorage，關閉重開仍不變）。 */
 export function getPersistentId(): string {
-  let id = sessionStorage.getItem(ID_KEY)
+  let id = localStorage.getItem(ID_KEY)
   if (!id) {
     // PeerJS 合法字元：英數與 -，這裡用 tng- 前綴 + 隨機碼
     id = `tng-${Math.random().toString(36).slice(2, 8)}${Date.now().toString(36).slice(-4)}`
-    sessionStorage.setItem(ID_KEY, id)
+    localStorage.setItem(ID_KEY, id)
   }
   return id
 }
 
+/** 把使用者輸入清成 PeerJS 合法 ID（小寫英數與 - _，長度上限）。不合法回傳空字串。 */
+export function sanitizeId(raw: string): string {
+  const clean = raw.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 24)
+  if (!clean || clean === RESERVED_ID) return ''
+  return clean
+}
+
+/** 覆寫固定節點 ID（使用者自訂時用）。 */
+export function setStoredId(id: string): void {
+  localStorage.setItem(ID_KEY, id)
+}
+
 export function getName(): string {
-  return sessionStorage.getItem(NAME_KEY) ?? ''
+  return localStorage.getItem(NAME_KEY) ?? ''
 }
 
 export function setNameStored(name: string): void {
-  sessionStorage.setItem(NAME_KEY, name.trim())
+  localStorage.setItem(NAME_KEY, name.trim())
 }
 
 export interface KnownPeer {
@@ -36,7 +64,7 @@ export interface KnownPeer {
 
 export function getKnownPeers(): KnownPeer[] {
   try {
-    const raw = sessionStorage.getItem(PEERS_KEY)
+    const raw = localStorage.getItem(PEERS_KEY)
     if (!raw) return []
     const arr = JSON.parse(raw)
     return Array.isArray(arr) ? arr.filter(p => p && typeof p.id === 'string') : []
@@ -51,10 +79,10 @@ export function saveKnownPeer(peer: KnownPeer): void {
   const i = list.findIndex(p => p.id === peer.id)
   if (i === -1) list.push(peer)
   else list[i] = { ...list[i], ...peer }
-  sessionStorage.setItem(PEERS_KEY, JSON.stringify(list))
+  localStorage.setItem(PEERS_KEY, JSON.stringify(list))
 }
 
 export function removeKnownPeer(id: string): void {
   const list = getKnownPeers().filter(p => p.id !== id)
-  sessionStorage.setItem(PEERS_KEY, JSON.stringify(list))
+  localStorage.setItem(PEERS_KEY, JSON.stringify(list))
 }

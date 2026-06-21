@@ -65,13 +65,13 @@ export function MeshProvider({ children }: { children: ReactNode }) {
 
   const [toast, setToast] = useState<{ kind: 'sos' | 'done'; text: string } | null>(null)
   const [sosFlashId, setSosFlashId] = useState<string | null>(null)
-  // 通知持久化（per-tab：刷新後保留）
+  // 通知持久化（localStorage：關閉分頁重開仍保留；以節點 ID 為 key 區分身份）
   const noticeKey = `guardian_notices_${myId || 'anon'}`
   const [notices, setNotices] = useState<Notice[]>(() => {
-    try { return JSON.parse(sessionStorage.getItem(noticeKey) ?? '[]') as Notice[] } catch { return [] }
+    try { return JSON.parse(localStorage.getItem(noticeKey) ?? '[]') as Notice[] } catch { return [] }
   })
   useEffect(() => {
-    try { sessionStorage.setItem(noticeKey, JSON.stringify(notices)) } catch { /* 容量不足忽略 */ }
+    try { localStorage.setItem(noticeKey, JSON.stringify(notices)) } catch { /* 容量不足忽略 */ }
   }, [notices, noticeKey])
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
