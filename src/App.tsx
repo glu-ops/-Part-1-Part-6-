@@ -4,6 +4,7 @@ import { UserProvider } from './contexts/UserContext'
 import { ShelterProvider } from './contexts/ShelterContext'
 import { IdentityProvider } from './contexts/IdentityContext'
 import { MeshProvider } from './contexts/MeshContext'
+import { FocusProvider } from './contexts/FocusContext'
 import Header from './components/Header'
 import BottomNav from './components/BottomNav'
 import HelpFab from './components/HelpFab'
@@ -33,18 +34,20 @@ export default function App() {
         ) : (
           <IdentityProvider>
             <MeshProvider>
-              <NameGate />
-              <Header />
-              <PwaBanner />
-              <Routes>
-                <Route path="/" element={<HomePage />} />
-                <Route path="/shelter/:id" element={<ShelterDetailPage />} />
-                <Route path="/route" element={<RoutePage />} />
-                <Route path="/report" element={<ReportPage />} />
-                <Route path="/mesh" element={<MeshPage />} />
-              </Routes>
-              <BottomNav />
-              <HelpFab />
+              <FocusProvider>
+                <NameGate />
+                <Header />
+                <PwaBanner />
+                <Routes>
+                  <Route path="/" element={<HomePage />} />
+                  <Route path="/shelter/:id" element={<ShelterDetailPage />} />
+                  <Route path="/route" element={<RoutePage />} />
+                  <Route path="/report" element={<ReportPage />} />
+                  <Route path="/mesh" element={<MeshPage />} />
+                </Routes>
+                <BottomNav />
+                <HelpFab />
+              </FocusProvider>
             </MeshProvider>
           </IdentityProvider>
         )}

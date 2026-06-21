@@ -11,6 +11,7 @@ import LocationSearch from './LocationSearch'
 import { FlyTo } from './mapHelpers'
 import { useShelters } from '../../contexts/ShelterContext'
 import { useUser } from '../../contexts/UserContext'
+import { useFocus } from '../../contexts/FocusContext'
 import { useI18n } from '../../i18n'
 import { getOverallStatus } from '../../utils/scoring'
 import { DEFAULT_LOC } from '../../utils/geo'
@@ -39,12 +40,21 @@ interface Props {
 export default function ShelterMap({ onSelect }: Props) {
   const { shelters } = useShelters()
   const { disaster, userLoc, locating, geoError, locateMe } = useUser()
+  const { target } = useFocus()
   const { t } = useI18n()
   const [flyTarget, setFlyTarget] = useState<LatLng | null>(null)
+  const [reportFocus, setReportFocus] = useState<{ id: string; nonce: number } | null>(null)
 
   useEffect(() => {
     setFlyTarget({ ...userLoc })
   }, [userLoc])
+
+  // 通知中心點擊回報 → 飛到該位置並開啟回報串資訊卡
+  useEffect(() => {
+    if (target?.kind !== 'report') return
+    setFlyTarget({ lat: target.lat, lng: target.lng })
+    setReportFocus({ id: target.id, nonce: target.nonce })
+  }, [target])
 
   return (
     <div className="relative w-full h-full">
@@ -66,7 +76,7 @@ export default function ShelterMap({ onSelect }: Props) {
         <BuildingLayer />
         <FloodOverlay />
         <RiskOverlay />
-        <ReportOverlay />
+        <ReportOverlay focus={reportFocus} />
 
         <Marker position={[userLoc.lat, userLoc.lng]} icon={userIcon} />
 

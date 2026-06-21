@@ -5,9 +5,11 @@ import { useUser } from '../contexts/UserContext'
 import { useShelters } from '../contexts/ShelterContext'
 import { useIdentity } from '../contexts/IdentityContext'
 import { useMesh } from '../contexts/MeshContext'
+import { useFocus } from '../contexts/FocusContext'
 import type { MeshMessage, PeerInfo } from '../hooks/usePeerMesh'
 import MeshMap from '../components/Map/MeshMap'
 import type { MeshPeerView } from '../components/Map/MeshMap'
+import SosBoard from '../components/Mesh/SosBoard'
 import { distanceMeters } from '../utils/geo'
 
 const NEARBY_M = 200  // F2.7-G 門檻
@@ -52,8 +54,11 @@ export default function MeshPage() {
   const [filter, setFilter]     = useState<string>('all')  // 'all' | 'sos' | 'system' | <peerId>
   const endRef = useRef<HTMLDivElement>(null)
 
-  const { myId, loading, error, peers, messages, connectedCount, connect, sendText, sendQuick, sendSOS, sosFlashId } = useMesh()
+  const { myId, loading, error, peers, messages, connectedCount, connect, sendText, sendQuick, raiseSos, replySos, markSosSafe, sosEvents, sosFlashId } = useMesh()
   const flashId = sosFlashId
+  const { target } = useFocus()
+  const focusSos = target?.kind === 'sos' ? { id: target.id, nonce: target.nonce } : null
+  const openSosPoints = useMemo(() => sosEvents.filter(e => e.status !== 'resolved' && e.lat != null && e.lng != null), [sosEvents])
 
   // 名稱解析：訊息自帶 senderName 優先，否則查 peers，最後退回短 ID
   const peerNameMap = useMemo(() => {
@@ -109,17 +114,15 @@ export default function MeshPage() {
 
   // 訊息類型標籤
   const typeTag = (m: MeshMessage): string => {
-    if (m.type === 'sos') return `SOS·${t(`mesh.layer.${m.layer ?? 'A'}`)}`
     if (m.type === 'quick') return t('mesh.type.quick')
     if (m.type === 'system') return t('mesh.type.system')
     return t('mesh.type.text')
   }
 
-  // 篩選
+  // 篩選（SOS 已獨立到看板，不在聊天篩選內）
   const connectedPeers = peers.filter(p => p.online)
   const filtered = messages.filter(m => {
     if (filter === 'all') return true
-    if (filter === 'sos') return m.type === 'sos'
     if (filter === 'system') return m.type === 'system'
     return m.senderId === filter || m.senderId === myId  // 與某人的對話視圖
   })
@@ -207,24 +210,29 @@ export default function MeshPage() {
         <span className="ml-auto flex items-center gap-2 text-[10px] text-white/55">
           <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-[#3b82f6] inline-block" />{myName || t('mesh.me')}</span>
           <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-[#f97316] inline-block" />{t('mesh.peer')}</span>
+          <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-white inline-block" style={{ boxShadow: '0 0 5px rgba(255,255,255,.9)' }} />{t('mesh.sosDot')}</span>
         </span>
       </div>
       <div className="flex-1 min-h-[280px]">
-        <MeshMap myPos={userLoc} peers={peerViews.filter(p => p.online)} flashId={flashId} meLabel={myName || t('mesh.me')} noPosLabel={t('mesh.noPos')} />
+        <MeshMap myPos={userLoc} peers={peerViews.filter(p => p.online)} flashId={flashId}
+          meLabel={myName || t('mesh.me')} noPosLabel={t('mesh.noPos')}
+          sosPoints={openSosPoints} focusSos={focusSos} />
       </div>
     </div>
   )
 
-  // ── 右欄：訊息 + 篩選 + 快捷 + SOS ──
+  // ── 右欄：SOS 看板 + 訊息 + 篩選 + 快捷 + 發 SOS ──
   const filterChips: { key: string; label: string }[] = [
     { key: 'all', label: t('mesh.filter.all') },
-    { key: 'sos', label: t('mesh.filter.sos') },
     { key: 'system', label: t('mesh.filter.system') },
     ...connectedPeers.map(p => ({ key: p.id, label: p.name || p.id.slice(0, 6) })),
   ]
 
   const chatCol = (
-    <div className="glass rounded-3xl p-4 flex flex-col mb-3 lg:mb-0">
+    <div className="glass rounded-3xl p-4 flex flex-col mb-3 lg:mb-0 lg:min-h-0">
+      {/* SOS 事件看板（聊天框上方） */}
+      <SosBoard events={sosEvents} myId={myId} onReply={replySos} onSelfSafe={markSosSafe} />
+
       {/* 篩選列 */}
       <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-2 mb-1 shrink-0">
         {filterChips.map(c => (
@@ -253,15 +261,12 @@ export default function MeshPage() {
                 {/* 來源標籤：名字 · 類型 */}
                 <div className={`flex items-center gap-1.5 mb-0.5 ${isMe(m) ? 'justify-end' : 'justify-start'}`}>
                   <span className="text-[11px] font-semibold text-white/70">{displayName(m)}</span>
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${
-                    m.type === 'sos' ? 'bg-status-danger/20 text-status-danger' : 'glass-cell text-white/40'}`}>{typeTag(m)}</span>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-full glass-cell text-white/40">{typeTag(m)}</span>
                 </div>
                 <div className={`inline-block max-w-[85%] rounded-2xl px-3 py-2 text-sm text-left ${
-                  m.type === 'sos'
-                    ? (m.layer === 'A' ? 'bg-orange-500 text-white font-semibold' : m.layer === 'C' ? 'bg-purple-600 text-white font-semibold' : 'bg-status-danger text-white font-bold')
-                    : isMe(m) ? 'bg-white text-neutral-900' : 'glass-cell text-white'}`}>
-                  {m.type === 'sos' && '🆘 '}{m.text}
-                  {(m.type === 'quick' || m.type === 'sos') && m.lat != null && (
+                  isMe(m) ? 'bg-white text-neutral-900' : 'glass-cell text-white'}`}>
+                  {m.text}
+                  {m.type === 'quick' && m.lat != null && (
                     <span className="block text-[10px] opacity-70 mt-0.5">📍 {m.lat.toFixed(4)}, {m.lng?.toFixed(4)}</span>
                   )}
                 </div>
@@ -298,25 +303,25 @@ export default function MeshPage() {
           className="bg-white disabled:opacity-30 text-neutral-900 p-3 rounded-full shrink-0"><Send size={18} /></button>
       </div>
 
-      {/* 三層 SOS（使用者擇一） */}
+      {/* 三層 SOS（使用者擇一發送，建立可追蹤事件） */}
       <div className="mt-3">
         <p className="text-[10px] text-white/40 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
           <AlertOctagon size={11} />{t('mesh.sosTitle')}
         </p>
         <div className="grid grid-cols-3 gap-2">
-          <button onClick={() => sendSOS('A', t('mesh.sosText'))} disabled={connectedCount === 0}
+          <button onClick={() => raiseSos('A', t('mesh.sosText'))} disabled={connectedCount === 0}
             className="bg-orange-500 disabled:opacity-30 text-white rounded-2xl py-2.5 flex flex-col items-center gap-0.5 active:scale-95 transition-transform">
             <Users size={16} />
             <span className="text-xs font-bold">{t('mesh.sos.private')}</span>
             <span className="text-[9px] opacity-85">{t('mesh.sos.privateRange')}</span>
           </button>
-          <button onClick={() => sendSOS('B', t('mesh.sosText'))}
+          <button onClick={() => raiseSos('B', t('mesh.sosText'))}
             className="bg-status-danger text-white rounded-2xl py-2.5 flex flex-col items-center gap-0.5 active:scale-95 transition-transform">
             <ShieldCheck size={16} />
             <span className="text-xs font-bold">{t('mesh.sos.command')}</span>
             <span className="text-[9px] opacity-85">{t('mesh.sos.commandRange')}</span>
           </button>
-          <button onClick={() => sendSOS('C', t('mesh.sosText'))} disabled={connectedCount === 0}
+          <button onClick={() => raiseSos('C', t('mesh.sosText'))} disabled={connectedCount === 0}
             className="bg-purple-600 disabled:opacity-30 text-white rounded-2xl py-2.5 flex flex-col items-center gap-0.5 active:scale-95 transition-transform">
             <Megaphone size={16} />
             <span className="text-xs font-bold">{t('mesh.sos.broadcast')}</span>

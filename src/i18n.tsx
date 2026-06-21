@@ -314,6 +314,40 @@ const zh: Dict = {
   'rescue.replyPlaceholder': '回覆求救者…',
   'rescue.resolvedReply': '您的求救已由指揮中心處理完成，請保持安全。',
   'rescue.handlingReply': '指揮中心已收到您的求救，正在處理中。',
+
+  // ── SOS 事件看板 + 回報狀態機 + 通知中心 ──
+  'status.handle.active': '待處理',
+  'status.handle.received': '已收到',
+  'status.handle.handling': '處理中',
+  'status.handle.resolved': '已處理',
+  'status.markReceived': '已收到',
+  'status.markHandling': '處理中',
+  'status.markResolved': '已處理',
+  'sos.boardTitle': 'SOS 求救事件',
+  'sos.boardEmpty': '目前沒有求救事件',
+  'sos.handledBy': '由 {who} 接手',
+  'sos.offerHelp': '我願意幫忙',
+  'sos.offerHelpText': '我願意幫忙，正在前往',
+  'sos.replyPlaceholder': '回覆協助訊息…',
+  'rescue.resolvedHistory': '已處理紀錄（{n}）',
+  'notice.title': '回報 / SOS 動態',
+  'notice.empty': '目前沒有新動態',
+  'notice.someone': '有人',
+  'notice.reportNew': '{who} 新增了{type}回報',
+  'notice.reportStatus': '{type}回報：{status}',
+  'notice.sosNew': '{who} 發出 SOS 求救',
+  'notice.sosStatus': '{who} 的 SOS：{status}',
+  'notice.sosReply': '{who} 的 SOS 有新回覆',
+  'report.threadCount': '此地點共 {n} 則回報',
+  'report.supplementHint': '補充此地點的最新狀況…',
+  'report.supplement': '補充',
+
+  // ── 已安全 / SOS 地圖點位 / 通知定位 ──
+  'sos.safe': '已安全',
+  'sos.markSafe': '我已安全',
+  'mesh.sosDot': 'SOS 位置',
+  'notice.sosSafe': '{who} 已回報安全',
+  'notice.tapToLocate': '點擊定位到地圖',
 }
 
 const en: Dict = {
@@ -616,6 +650,40 @@ const en: Dict = {
   'rescue.replyPlaceholder': 'Reply to sender…',
   'rescue.resolvedReply': 'Your SOS has been resolved by the command center. Stay safe.',
   'rescue.handlingReply': 'The command center has received your SOS and is handling it.',
+
+  // ── SOS event board + report status machine + notification center ──
+  'status.handle.active': 'Pending',
+  'status.handle.received': 'Received',
+  'status.handle.handling': 'Handling',
+  'status.handle.resolved': 'Resolved',
+  'status.markReceived': 'Received',
+  'status.markHandling': 'Handling',
+  'status.markResolved': 'Resolved',
+  'sos.boardTitle': 'SOS events',
+  'sos.boardEmpty': 'No SOS events yet',
+  'sos.handledBy': 'Handled by {who}',
+  'sos.offerHelp': "I'll help",
+  'sos.offerHelpText': "I'll help — on my way",
+  'sos.replyPlaceholder': 'Reply with help…',
+  'rescue.resolvedHistory': 'Resolved history ({n})',
+  'notice.title': 'Report / SOS activity',
+  'notice.empty': 'No new activity',
+  'notice.someone': 'Someone',
+  'notice.reportNew': '{who} added a {type} report',
+  'notice.reportStatus': '{type} report: {status}',
+  'notice.sosNew': '{who} raised an SOS',
+  'notice.sosStatus': "{who}'s SOS: {status}",
+  'notice.sosReply': "New reply on {who}'s SOS",
+  'report.threadCount': '{n} reports at this location',
+  'report.supplementHint': 'Add the latest update here…',
+  'report.supplement': 'Add',
+
+  // ── Safe / SOS map dot / notice locate ──
+  'sos.safe': 'Safe',
+  'sos.markSafe': "I'm safe",
+  'mesh.sosDot': 'SOS location',
+  'notice.sosSafe': '{who} reported safe',
+  'notice.tapToLocate': 'Tap to locate on map',
 }
 
 const vi: Dict = {

@@ -3,6 +3,7 @@ import { Shield, Wifi, WifiOff, Languages, Check, Map, Navigation, MessageSquare
 import { NavLink } from 'react-router-dom'
 import { useUser } from '../contexts/UserContext'
 import { useI18n, LANGS } from '../i18n'
+import NotificationBell from './NotificationBell'
 import { DISASTERS, DISASTER_ICON } from '../disasters'
 import type { Lang } from '../i18n'
 import type { UserRole } from '../types'
@@ -160,6 +161,9 @@ export default function Header() {
       </nav>
 
       <div className="flex-1 lg:hidden" />
+
+      {/* 回報 / SOS 動態通知 */}
+      <NotificationBell />
 
       {/* 線上狀態：線上=白、離線=灰 */}
       <div className={`flex items-center gap-1 text-xs shrink-0 glass-cell rounded-full px-2.5 py-1.5 ${isOnline ? 'text-white' : 'text-white/45'}`}>

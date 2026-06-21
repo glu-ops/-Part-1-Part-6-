@@ -1,19 +1,19 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { LatLng } from '../utils/geo'
-import type { CrowdReport } from '../types'
+import type { CrowdReport, SosEvent, SosLayer } from '../types'
 import { getKnownPeers, saveKnownPeer } from '../utils/identity'
 
 // F2.7-E：寫死的救災指揮中心節點 ID（/rescue 用此 ID 起 Peer）
 export const RESCUE_CENTER_ID = 'tainan-guardian-rescue'
 
-// C 層接力初始 TTL（F2.7-F）
-export const SOS_TTL = 5
+// SOS / 演變型事件接力初始 TTL（F2.7-F）
+export const SOS_TTL = 6
 
 // 位置共享更新頻率（F2.7-A）
 const POS_INTERVAL_MS = 30_000
 
-export type MeshMsgType = 'text' | 'quick' | 'sos' | 'position' | 'report' | 'profile' | 'system'
-export type SosLayer = 'A' | 'B' | 'C'
+export type MeshMsgType = 'text' | 'quick' | 'sos' | 'position' | 'report' | 'profile' | 'system' | 'sosEvent'
+export type { SosLayer }
 
 export interface MeshMessage {
   msgId: string
@@ -26,11 +26,12 @@ export interface MeshMessage {
   senderName?: string     // 發送者名稱（去正規化：每則訊息都帶，斷線後仍可顯示）
   ttl?: number            // 接力跳數
   ts: number
-  // ── 演變型訊息（回報）：用穩定 eventId + 遞增 version 去重，
+  // ── 演變型訊息（回報 / SOS）：用穩定 eventId + 遞增 version 去重，
   //    僅「更新版」才續傳（取代純 TTL 防循環），符合「持續通知事件演變」需求 ──
   eventId?: string
   version?: number
   report?: CrowdReport
+  sos?: SosEvent
 }
 
 export interface PeerInfo {
@@ -50,10 +51,12 @@ interface Options {
   myName?: string
   /** 我目前的位置（用於位置共享與 SOS 附帶座標） */
   myPos?: LatLng | null
-  /** 收到 SOS 時的副作用（toast、marker 閃爍等） */
-  onSos?: (m: MeshMessage, fromPeerId: string) => void
+  /** 收到 SOS 事件（新／演變版）→ 合併進 SOS store、toast、marker 閃爍等 */
+  onSosEvent?: (s: SosEvent, fromPeerId: string) => void
   /** 收到回報（新／演變版）→ 合併進本地 store */
   onReport?: (r: CrowdReport, fromPeerId: string) => void
+  /** 新連線建立時要推送給對方的同步訊息（未結案 SOS 等），達成重連同步 */
+  getSyncMessages?: () => MeshMessage[]
 }
 
 function genId(): string {
@@ -72,7 +75,7 @@ function genId(): string {
  *   A 私人（已連線 peer）/ B 公共（寫死指揮中心）/ C 廣播（msgId 去重 + TTL 接力，並送指揮中心）。
  * - 指揮中心可沿原連線回覆（sendTo）。
  */
-export function usePeerMesh({ fixedId, myName, myPos, onSos, onReport }: Options = {}) {
+export function usePeerMesh({ fixedId, myName, myPos, onSosEvent, onReport, getSyncMessages }: Options = {}) {
   const isRescue = fixedId === RESCUE_CENTER_ID
 
   const [myId, setMyId]       = useState('')
@@ -82,26 +85,33 @@ export function usePeerMesh({ fixedId, myName, myPos, onSos, onReport }: Options
   const [peers, setPeers]     = useState<PeerInfo[]>(() =>
     isRescue ? [] : getKnownPeers().map(p => ({ id: p.id, name: p.name, connectedAt: '', online: false })),
   )
-  const [messages, setMessages] = useState<MeshMessage[]>([])
+  // 聊天訊息持久化（per-tab：sessionStorage 隨分頁；刷新後保留）
+  const chatKey = `guardian_chat_${fixedId ?? 'anon'}`
+  const [messages, setMessages] = useState<MeshMessage[]>(() => {
+    try { return JSON.parse(sessionStorage.getItem(chatKey) ?? '[]') as MeshMessage[] } catch { return [] }
+  })
+  useEffect(() => {
+    try { sessionStorage.setItem(chatKey, JSON.stringify(messages.slice(-200))) } catch { /* 容量不足忽略 */ }
+  }, [messages, chatKey])
 
   const peerRef        = useRef<any>(null)
   const connsRef       = useRef<Map<string, any>>(new Map())
   const rescueConnRef  = useRef<any>(null)        // B 層往指揮中心的連線（不列入 peers）
-  const seenRef        = useRef<Set<string>>(new Set()) // C 層 SOS 去重
-  const reportSeenRef  = useRef<Set<string>>(new Set())
-  const versionsRef    = useRef<Map<string, number>>(new Map()) // 回報 eventId → 已見最新 version
+  const reportSeenRef  = useRef<Set<string>>(new Set()) // 演變型訊息 msgId 去重（report/sosEvent 共用）
   const greetedRef     = useRef<Set<string>>(new Set()) // 已發過「加入」系統訊息的 peer
   const myPosRef       = useRef<LatLng | null>(myPos ?? null)
   const myNameRef      = useRef(myName ?? '')
   const myIdRef        = useRef('')
-  const onSosRef       = useRef(onSos)
+  const onSosEventRef  = useRef(onSosEvent)
   const onReportRef    = useRef(onReport)
+  const syncRef        = useRef(getSyncMessages)
   const registerRef    = useRef<(conn: any) => void>(() => {})
 
   useEffect(() => { myPosRef.current = myPos ?? null }, [myPos])
   useEffect(() => { myNameRef.current = myName ?? '' }, [myName])
-  useEffect(() => { onSosRef.current = onSos }, [onSos])
+  useEffect(() => { onSosEventRef.current = onSosEvent }, [onSosEvent])
   useEffect(() => { onReportRef.current = onReport }, [onReport])
+  useEffect(() => { syncRef.current = getSyncMessages }, [getSyncMessages])
 
   // ── 內部工具 ──────────────────────────────────────────
   const upsertPeer = useCallback((id: string, patch?: Partial<PeerInfo>) => {
@@ -158,31 +168,22 @@ export function usePeerMesh({ fixedId, myName, myPos, onSos, onReport }: Options
       return
     }
 
-    // 回報（演變型）：以 eventId + version 去重；僅更新版才處理 + 續傳
-    if (msg.type === 'report' && msg.eventId && msg.report) {
-      if (msg.msgId && reportSeenRef.current.has(msg.msgId)) return
+    // 回報 / SOS（演變型）：純 msgId 去重 + ttl flooding。
+    // 不再以 version 早退（version 是各節點本地遞增，並非全域單調 → 會誤丟有效的
+    // safe/resolved/補充更新）。改由 store 合併（狀態取較進階、回覆/補充取聯集）保證收斂，
+    // 並對每則收到的訊息「無條件續傳」給其他連線，讓狀態變化擴散到整個 mesh 與指揮中心 hub。
+    if ((msg.type === 'report' && msg.eventId && msg.report) ||
+        (msg.type === 'sosEvent' && msg.eventId && msg.sos)) {
+      if (msg.msgId && reportSeenRef.current.has(msg.msgId)) return  // 同一則只處理/續傳一次
       if (msg.msgId) reportSeenRef.current.add(msg.msgId)
-      const seenV = versionsRef.current.get(msg.eventId) ?? -1
-      if ((msg.version ?? 0) < seenV) return
-      versionsRef.current.set(msg.eventId, Math.max(seenV, msg.version ?? 0))
-      onReportRef.current?.(msg.report, fromId)
-      if ((msg.ttl ?? 0) > 1) forward({ ...msg, ttl: (msg.ttl ?? 1) - 1 }, fromId) // 續傳演變
+      if (msg.type === 'report' && msg.report) onReportRef.current?.(msg.report, fromId)
+      else if (msg.sos) onSosEventRef.current?.(msg.sos, fromId)
+      if ((msg.ttl ?? 0) > 1) forward({ ...msg, ttl: (msg.ttl ?? 1) - 1 }, fromId) // 續傳演變（gossip）
       return
     }
 
-    // C 層接力去重
-    if (msg.layer === 'C') {
-      if (msg.msgId && seenRef.current.has(msg.msgId)) return
-      if (msg.msgId) seenRef.current.add(msg.msgId)
-    }
-
+    // 一般聊天 / 系統訊息
     setMessages(prev => [...prev, msg])
-    if (msg.type === 'sos') onSosRef.current?.(msg, fromId)
-
-    // 接力轉發（TTL-1，>0 才續傳）
-    if (msg.layer === 'C' && (msg.ttl ?? 0) > 1) {
-      forward({ ...msg, ttl: (msg.ttl ?? 1) - 1 }, fromId)
-    }
   }, [upsertPeer, forward, pushSystem, isRescue])
 
   const registerConn = useCallback((conn: any) => {
@@ -197,11 +198,13 @@ export function usePeerMesh({ fixedId, myName, myPos, onSos, onReport }: Options
     })
     conn.on('error', () => { /* 單一連線錯誤不阻斷整體 */ })
 
-    // 連上後互換名片 + 送一次位置（指揮中心不主動報名片，名稱由訊息 senderName 帶出）
+    // 連上後互換名片 + 送一次位置 + 同步未結案 SOS（重連同步：對方拉得到歷史）
     const intro = () => {
       if (!isRescue) { try { conn.send(profileMsg()) } catch { /* ignore */ } }
       const pos = myPosRef.current
       if (pos) { try { conn.send(posMsg(pos)) } catch { /* ignore */ } }
+      const sync = syncRef.current?.() ?? []
+      for (const m of sync) { try { conn.send(m) } catch { /* ignore */ } }
     }
     if (conn.open) intro()
     else conn.on('open', intro)
@@ -302,44 +305,26 @@ export function usePeerMesh({ fixedId, myName, myPos, onSos, onReport }: Options
       const conn = peerRef.current.connect(RESCUE_CENTER_ID, { reliable: true })
       if (!conn) return
       rescueConnRef.current = conn
-      // 接收指揮中心回覆（只取文字/系統訊息，不把指揮中心列入 peers）
-      conn.on('data', (d: any) => {
-        const r = d as MeshMessage
-        if (r && (r.type === 'system' || r.type === 'text' || r.type === 'sos' || r.type === 'quick')) {
-          setMessages(prev => [...prev, r])
-        }
-      })
+      // 指揮中心回覆 / SOS 狀態演變 → 走 handleData（含 sosEvent 去重、系統訊息）
+      conn.on('data', (d: any) => handleData(RESCUE_CENTER_ID, d))
       conn.on('open', () => { try { conn.send(m) } catch { /* ignore */ } })
       conn.on('error', () => { /* 指揮中心離線 → 靜默 */ })
     } catch { /* ignore */ }
-  }, [isRescue])
+  }, [isRescue, handleData])
 
-  // F2.7-D/E/F：三層 SOS。使用者擇一發送 → 同一接收者只會收到一次。
-  const sendSOS = useCallback((layer: SosLayer, text: string) => {
-    const pos = myPosRef.current
-    const make = () => baseMsg({ type: 'sos', layer, text, lat: pos?.lat, lng: pos?.lng })
-
-    if (layer === 'A') {
-      // 私人：只送已連線 peer（無接力）
-      sendToAll(make())
-    } else if (layer === 'B') {
-      // 公共：只送救災指揮中心
-      sendToRescue(make())
-    } else {
-      // 廣播：TTL 接力給整個 mesh，並一併送指揮中心
-      const c = { ...make(), ttl: SOS_TTL }
-      seenRef.current.add(c.msgId)   // 自己發的先標記已看，避免回傳重複處理
-      sendToAll(c)
-      sendToRescue({ ...make(), ttl: SOS_TTL })
-    }
-    // 本地回顯一則（讓自己也看到送出紀錄）
-    pushLocal(make())
-  }, [sendToAll, sendToRescue, pushLocal, baseMsg])
+  // F2.7-D/E/F：分享 / 演變 SOS 事件（建立、回覆、狀態更新都走這裡）。
+  // 以 eventId+version 去重 → 同一次求救只顯示一次（修正重複）。依層級決定路由：
+  //   A 私人＝只給已連線 peer；B 指揮中心＝送指揮中心；C 廣播＝全 mesh 接力＋指揮中心。
+  const shareSosEvent = useCallback((s: SosEvent) => {
+    const m = baseMsg({ type: 'sosEvent', eventId: s.id, version: s.version, sos: s, layer: s.layer, ttl: SOS_TTL })
+    reportSeenRef.current.add(m.msgId)
+    sendToAll(m)                       // 已連線者（A/B/C 皆送，B/C 另含接力 ttl）
+    if (s.layer !== 'A') sendToRescue(m)  // B/C 一併送指揮中心
+  }, [sendToAll, sendToRescue, baseMsg])
 
   // F2.8：分享 / 更新回報（含投票、處理結果）。版本遞增、跨節點接力同步。
   const shareReport = useCallback((r: CrowdReport) => {
-    versionsRef.current.set(r.id, r.version)  // 自己發的標記為已見
-    const m = baseMsg({ type: 'report', eventId: r.id, version: r.version, report: r, ttl: 8 })
+    const m = baseMsg({ type: 'report', eventId: r.id, version: r.version, report: r, ttl: SOS_TTL })
     reportSeenRef.current.add(m.msgId)
     sendToAll(m)
     sendToRescue(m)   // 同時送指揮中心（B 層）
@@ -349,6 +334,6 @@ export function usePeerMesh({ fixedId, myName, myPos, onSos, onReport }: Options
     myId, loading, error, peers, messages,
     connectedCount: peers.filter(p => p.online).length,
     isRescue,
-    connect, sendText, sendQuick, sendSOS, sendTo, shareReport,
+    connect, sendText, sendQuick, shareSosEvent, sendTo, shareReport,
   }
 }

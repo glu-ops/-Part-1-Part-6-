@@ -3,12 +3,13 @@ import { CheckCircle, MapPin, LocateFixed, Loader2, ImagePlus, X } from 'lucide-
 import { useShelters, getClientId } from '../contexts/ShelterContext'
 import { useUser } from '../contexts/UserContext'
 import { useMesh } from '../contexts/MeshContext'
+import { useIdentity } from '../contexts/IdentityContext'
 import { useI18n } from '../i18n'
 import { useIsDesktop } from '../hooks'
 import LocationPicker from '../components/Map/LocationPicker'
-import ReportCard from '../components/Report/ReportCard'
-import { downscaleImage } from '../utils/image'
-import type { CrowdReport, ReportType, ResourceStatus } from '../types'
+import ReportThreadCard from '../components/Report/ReportThreadCard'
+import { filesToAttachments } from '../utils/image'
+import type { CrowdReport, ReportType, ResourceStatus, Attachment } from '../types'
 
 const TYPES: { value: ReportType; key: string }[] = [
   { value: 'crowd', key: 'report.type.crowd' },
@@ -28,9 +29,10 @@ function makeReportId(clientId: string): string {
 }
 
 export default function ReportPage() {
-  const { shelters, addReport, activeReports, voteReport } = useShelters()
+  const { shelters, addReport, reportThreads, voteReport } = useShelters()
   const { userLoc, locateMe, locating } = useUser()
   const { shareReport } = useMesh()
+  const { name } = useIdentity()
   const { t } = useI18n()
   const isDesktop = useIsDesktop()
   const cid = getClientId()
@@ -39,7 +41,7 @@ export default function ReportPage() {
   const [shelterId, setShelterId] = useState('')
   const [note, setNote] = useState('')
   const [loc, setLoc] = useState(userLoc)
-  const [files, setFiles] = useState<{ url: string; name: string }[]>([])
+  const [files, setFiles] = useState<Attachment[]>([])
   const [done, setDone] = useState(false)
   const [saveWarning, setSaveWarning] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -56,24 +58,26 @@ export default function ReportPage() {
 
   async function addFiles(list: FileList | null) {
     if (!list) return
-    // 壓縮成 base64（可持久化 + 可透過 Mesh 傳遞）
-    const next = await Promise.all(
-      Array.from(list).map(async f => ({ url: await downscaleImage(f), name: f.name })),
-    )
-    setFiles(prev => [...prev, ...next])
+    // 圖片壓縮 / 影片 / 檔案 → data URL（可持久化 + 可透過 Mesh 傳遞）
+    const { attachments } = await filesToAttachments(list)
+    setFiles(prev => [...prev, ...attachments])
   }
 
   function submit() {
+    const id = makeReportId(cid)
     const r: CrowdReport = {
-      id: makeReportId(cid),
+      id,
       shelter_id: shelterId || null,
       type, severity, note,
       reported_at: new Date().toISOString(),
       lat: loc.lat, lng: loc.lng,
-      photos: files.map(f => f.url),
+      photos: [],
+      attachments: files,
       upVoters: [], downVoters: [],
       status: 'active',
       author: cid,
+      authorName: name || undefined,
+      threadId: id,   // 自成一串；之後可被「補充回報」沿用
       version: 1,
     }
     const saved = addReport(r)
@@ -83,7 +87,7 @@ export default function ReportPage() {
     setTimeout(() => { setDone(false); setSaveWarning(false); setNote(''); setFiles([]) }, 3000)
   }
 
-  const recent = activeReports.slice().reverse().slice(0, 6)
+  const recentThreads = reportThreads.filter(th => th.status !== 'resolved').slice(0, 6)
   const onVote = (id: string, dir: 'up' | 'down') => { const u = voteReport(id, dir, cid); if (u) shareReport(u) }
 
   const panel = (
@@ -171,12 +175,16 @@ export default function ReportPage() {
             <ImagePlus size={20} />
             <span className="text-[11px]">{t('report.dropHint')}</span>
           </button>
-          <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={e => addFiles(e.target.files)} />
+          <input ref={fileRef} type="file" accept="image/*,video/*,*/*" multiple className="hidden" onChange={e => { addFiles(e.target.files); e.target.value = '' }} />
           {files.length > 0 && (
             <div className="grid grid-cols-4 gap-2 mt-2">
               {files.map((f, i) => (
-                <div key={i} className="relative aspect-square rounded-lg overflow-hidden glass-cell">
-                  <img src={f.url} alt={f.name} className="w-full h-full object-cover" />
+                <div key={i} className="relative aspect-square rounded-lg overflow-hidden glass-cell flex items-center justify-center">
+                  {f.kind === 'image'
+                    ? <img src={f.url} alt={f.name} className="w-full h-full object-cover" />
+                    : f.kind === 'video'
+                      ? <video src={f.url} className="w-full h-full object-cover bg-black" />
+                      : <span className="text-[9px] text-white/60 px-1 text-center break-all">📎 {f.name.slice(0, 12)}</span>}
                   <button onClick={() => setFiles(prev => prev.filter((_, j) => j !== i))}
                     className="absolute top-0.5 right-0.5 bg-black/60 rounded-full p-0.5 text-white/80">
                     <X size={12} />
@@ -187,14 +195,14 @@ export default function ReportPage() {
           )}
         </div>
 
-        {/* 最近回報 */}
-        {recent.length > 0 && (
+        {/* 最近回報（同地點多人補充合併為一串） */}
+        {recentThreads.length > 0 && (
           <div className="glass-cell rounded-2xl p-4">
             <p className="text-xs text-white/45 uppercase tracking-wider mb-3">{t('report.recent')}</p>
             <div className="space-y-2">
-              {recent.map(r => (
-                <div key={r.id} className="glass-cell rounded-xl p-3">
-                  <ReportCard report={r} clientId={cid} onVote={dir => onVote(r.id, dir)} />
+              {recentThreads.map(th => (
+                <div key={th.threadId} className="glass-cell rounded-xl p-3">
+                  <ReportThreadCard thread={th} clientId={cid} onVote={onVote} />
                 </div>
               ))}
             </div>

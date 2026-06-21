@@ -1,108 +1,90 @@
-import { useMemo, useCallback, useState } from 'react'
-import { ShieldAlert, Radio, MapPin, Clock, MessageSquare, Send, CheckCircle2, Loader2 } from 'lucide-react'
+import { useCallback } from 'react'
+import { Marker, Popup } from 'react-leaflet'
+import L from 'leaflet'
+import { ShieldAlert, Radio, MessageSquare } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { useShelters, getClientId } from '../contexts/ShelterContext'
 import { usePeerMesh, RESCUE_CENTER_ID } from '../hooks/usePeerMesh'
-import type { MeshMessage, SosLayer } from '../hooks/usePeerMesh'
+import { useSosStore } from '../hooks/useSosStore'
+import type { MeshMessage } from '../hooks/usePeerMesh'
 import MeshMap from '../components/Map/MeshMap'
-import type { MeshPeerView } from '../components/Map/MeshMap'
-import ReportCard from '../components/Report/ReportCard'
-import type { CrowdReport } from '../types'
-import { DEFAULT_LOC, distanceMeters } from '../utils/geo'
-
-type SosStatus = 'active' | 'handling' | 'resolved'
-
-interface SosEntry {
-  senderId: string
-  senderName: string
-  layer: SosLayer
-  lat?: number
-  lng?: number
-  text?: string
-  ts: number
-  nearestLabel?: string
-}
+import ReportThreadCard from '../components/Report/ReportThreadCard'
+import SosBoard from '../components/Mesh/SosBoard'
+import type { CrowdReport, SosEvent, SosReply, HandleStatus, ResourceStatus } from '../types'
+import { DEFAULT_LOC } from '../utils/geo'
 
 function genId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+// 回報地圖標記（白菱形 + 嚴重度透明度 + 多人補充人數徽章）
+const ALPHA: Record<ResourceStatus, number> = { green: 0.25, yellow: 0.5, red: 0.85 }
+function reportIcon(sev: ResourceStatus, count: number): L.DivIcon {
+  return L.divIcon({
+    className: '',
+    html: `<div style="position:relative;width:18px;height:18px;">
+      <div style="width:18px;height:18px;background:rgba(255,255,255,${ALPHA[sev]});border:1.5px solid rgba(255,255,255,.9);border-radius:4px;transform:rotate(45deg);box-shadow:0 0 8px rgba(255,255,255,.4);"></div>
+      ${count > 1 ? `<span style="position:absolute;top:-8px;right:-8px;background:#ef4444;color:#fff;font-size:9px;font-weight:700;border-radius:9px;min-width:15px;height:15px;display:flex;align-items:center;justify-content:center;padding:0 3px;">${count}</span>` : ''}
+    </div>`,
+    iconSize: [18, 18], iconAnchor: [9, 9], popupAnchor: [0, -10],
+  })
+}
+
 export default function RescueCenterPage() {
   const { t } = useI18n()
-  const { shelters, activeReports, mergeReport, resolveReport, voteReport } = useShelters()
+  const { reportThreads, mergeReport, setThreadStatus, voteReport } = useShelters()
   const cid = getClientId()
+  const sos = useSosStore()
+
   const onReport = useCallback((r: CrowdReport) => { mergeReport(r) }, [mergeReport])
-  const { myId, loading, error, messages, shareReport, sendTo } = usePeerMesh({
-    fixedId: RESCUE_CENTER_ID, myName: t('rescue.title'), onReport,
+  const onSosEvent = useCallback((s: SosEvent) => { sos.mergeRemote(s) }, [sos])
+  // 重連同步：把指揮中心已知的未結案 SOS 推回給新連上的節點
+  const getSyncMessages = useCallback((): MeshMessage[] => sos.getOpenEvents().map(e => ({
+    msgId: genId(), type: 'sosEvent', eventId: e.id, version: e.version,
+    sos: e, layer: e.layer, senderId: e.senderId, senderName: e.senderName, ts: Date.now(),
+  })), [sos])
+
+  const { myId, loading, error, shareReport, shareSosEvent } = usePeerMesh({
+    fixedId: RESCUE_CENTER_ID, myName: t('rescue.title'), onReport, onSosEvent, getSyncMessages,
   })
 
-  // 每筆求救的處理狀態與回覆草稿（依求救者 ID）
-  const [statusMap, setStatusMap] = useState<Record<string, SosStatus>>({})
-  const [replyDraft, setReplyDraft] = useState<Record<string, string>>({})
+  // 指揮中心回覆 / 推進 SOS 狀態 → 寫入 store 並廣播給相關節點
+  const replySos = useCallback((sosId: string, text: string, offerHelp?: boolean) => {
+    const reply: SosReply = { id: genId(), fromId: myId || RESCUE_CENTER_ID, fromName: t('rescue.title'), text, ts: Date.now(), offerHelp }
+    const u = sos.addReply(sosId, reply); if (u) shareSosEvent(u)
+  }, [sos, shareSosEvent, myId, t])
 
-  // 取 B 與 C 層 SOS，依求救者去重保留最新
-  const entries: SosEntry[] = useMemo(() => {
-    const byId = new Map<string, SosEntry>()
-    for (const m of messages) {
-      if (m.type !== 'sos' || (m.layer !== 'B' && m.layer !== 'C')) continue
-      const prev = byId.get(m.senderId)
-      if (!prev || m.ts > prev.ts) {
-        let nearestLabel: string | undefined
-        if (m.lat != null && m.lng != null && shelters.length) {
-          let best = Infinity, name = ''
-          for (const s of shelters) {
-            const d = distanceMeters({ lat: m.lat, lng: m.lng }, { lat: s.lat, lng: s.lng })
-            if (d < best) { best = d; name = s.name }
-          }
-          nearestLabel = t('mesh.nearShelter', { name, d: best })
-        }
-        byId.set(m.senderId, {
-          senderId: m.senderId,
-          senderName: m.senderName || `${m.senderId.slice(0, 8)}…`,
-          layer: m.layer as SosLayer,
-          lat: m.lat, lng: m.lng, text: m.text, ts: m.ts, nearestLabel,
-        })
-      }
-    }
-    return [...byId.values()].sort((a, b) => b.ts - a.ts)
-  }, [messages, shelters, t])
+  const setSosStatusFn = useCallback((sosId: string, status: HandleStatus) => {
+    const u = sos.setStatus(sosId, status, t('rescue.title')); if (u) shareSosEvent(u)
+  }, [sos, shareSosEvent, t])
 
-  const mapPeers: MeshPeerView[] = entries
-    .filter(e => e.lat != null && e.lng != null)
-    .map(e => ({ id: e.senderId, name: e.senderName, connectedAt: '', online: true, lat: e.lat, lng: e.lng, nearestLabel: e.nearestLabel }))
-
-  // 沿原連線回覆求救者（顯示為對方端的系統訊息）
-  const reply = (senderId: string, text: string) => {
-    if (!text.trim()) return
-    const m: MeshMessage = {
-      msgId: genId(), type: 'system', text: `【${t('rescue.title')}】${text}`,
-      senderId: myId || RESCUE_CENTER_ID, senderName: t('rescue.title'), ts: Date.now(),
-    }
-    sendTo(senderId, m)
-    setReplyDraft(prev => ({ ...prev, [senderId]: '' }))
+  // 回報整串推進狀態 → 廣播每筆更新
+  const onThreadStatus = (threadId: string, status: HandleStatus) => {
+    const updated = setThreadStatus(threadId, status, status === 'resolved' ? t('rescue.resolvedNote') : undefined)
+    updated.forEach(u => shareReport(u))
   }
+  const onVote = (id: string, dir: 'up' | 'down') => { const u = voteReport(id, dir, cid); if (u) shareReport(u) }
 
-  const setStatus = (senderId: string, status: SosStatus) => {
-    setStatusMap(prev => ({ ...prev, [senderId]: status }))
-    if (status === 'resolved') reply(senderId, t('rescue.resolvedReply'))
-    else if (status === 'handling') reply(senderId, t('rescue.handlingReply'))
-  }
+  // 分類：未結案 / 已處理
+  const activeThreads = reportThreads.filter(th => th.status !== 'resolved')
+  const resolvedThreads = reportThreads.filter(th => th.status === 'resolved')
 
-  const layerBadge = (layer: SosLayer) =>
-    layer === 'C'
-      ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-600/30 text-purple-300">{t('mesh.layer.C')}</span>
-      : <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-status-danger/30 text-status-danger">{t('mesh.layer.B')}</span>
-
-  const statusBadge = (s: SosStatus) =>
-    s === 'resolved'
-      ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-status-safe/25 text-status-safe flex items-center gap-1"><CheckCircle2 size={10} />{t('rescue.statusResolved')}</span>
-      : s === 'handling'
-        ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-status-caution/25 text-status-caution flex items-center gap-1"><Loader2 size={10} />{t('rescue.statusHandling')}</span>
-        : <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/10 text-white/60">{t('rescue.statusActive')}</span>
+  // 地圖標記：SOS 白點 + 回報菱形（皆可點開詳情）
+  const openSos = sos.sosEvents.filter(e => e.status !== 'resolved')
+  const sosPoints = openSos.filter(e => e.lat != null && e.lng != null)
+  const reportMarkers = activeThreads.filter(th => th.latest.lat && th.latest.lng).map(th => (
+    <Marker key={th.threadId} position={[th.latest.lat, th.latest.lng]} icon={reportIcon(th.latest.severity, th.reports.length)}>
+      <Popup>
+        <div style={{ minWidth: 220, maxWidth: 260 }}>
+          <ReportThreadCard thread={th} clientId={cid} onVote={onVote} onThreadStatus={status => onThreadStatus(th.threadId, status)} />
+        </div>
+      </Popup>
+    </Marker>
+  ))
 
   return (
     <div className="min-h-screen bg-neutral-950 text-white px-4 py-4 lg:h-screen lg:flex lg:flex-col">
-      {/* 指揮中心抬頭 */}
+      {/* 指揮中心抬頭（誠實標示為系統內部模擬節點） */}
       <div className="glass rounded-2xl px-4 py-3 flex items-center gap-3 mb-3">
         <ShieldAlert size={26} className="text-white shrink-0" />
         <div className="min-w-0">
@@ -120,95 +102,63 @@ export default function RescueCenterPage() {
       </div>
 
       <div className="lg:grid lg:grid-cols-[1fr_1fr_1.1fr] lg:gap-4 lg:flex-1 lg:min-h-0">
-        {/* 求救清單 */}
+        {/* 求救看板（B/C 層 SOS，可回覆與推進狀態） */}
         <div className="glass rounded-3xl p-4 mb-3 lg:mb-0 flex flex-col lg:min-h-0">
-          <p className="text-xs text-white/45 uppercase tracking-wider mb-3">{t('rescue.count', { n: entries.length })}</p>
-          <div className="flex-1 overflow-y-auto no-scrollbar space-y-2">
-            {entries.length === 0 ? (
+          <p className="text-xs text-white/45 uppercase tracking-wider mb-3">{t('rescue.count', { n: openSos.length })}</p>
+          <div className="flex-1 overflow-y-auto thin-scrollbar">
+            {sos.sosEvents.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full py-16 text-white/30">
                 <Radio size={26} className="mb-2 opacity-40" />
                 <p className="text-sm">{t('rescue.empty')}</p>
               </div>
-            ) : entries.map(e => {
-              const st = statusMap[e.senderId] ?? 'active'
-              return (
-                <div key={e.senderId} className={`glass-cell rounded-2xl px-3 py-2.5 border ${st === 'resolved' ? 'border-status-safe/30 opacity-75' : 'border-status-danger/30'}`}>
-                  <div className="flex items-center gap-2">
-                    {st !== 'resolved' && <span className="w-2 h-2 rounded-full bg-status-danger animate-ping shrink-0" />}
-                    <span className="text-sm font-semibold flex-1 truncate">{e.senderName}</span>
-                    {layerBadge(e.layer)}
-                    <span className="text-[10px] text-white/40 flex items-center gap-1"><Clock size={10} />{new Date(e.ts).toLocaleTimeString()}</span>
-                  </div>
-                  <p className="text-[10px] text-white/35 font-mono mt-0.5 truncate">{e.senderId}</p>
-                  {e.text && <p className="text-xs text-white/80 mt-1">{e.text}</p>}
-                  <p className="text-[11px] text-white/50 mt-1 flex items-center gap-1">
-                    <MapPin size={11} className="text-white/55" />
-                    {e.lat != null ? `${e.lat.toFixed(4)}, ${e.lng?.toFixed(4)}` : t('rescue.noPos')}
-                    {e.nearestLabel && <span className="text-white/35">· {e.nearestLabel}</span>}
-                  </p>
-
-                  {/* 狀態 + 操作 */}
-                  <div className="flex items-center gap-2 mt-2">
-                    {statusBadge(st)}
-                    <div className="ml-auto flex gap-1.5">
-                      {st === 'active' && (
-                        <button onClick={() => setStatus(e.senderId, 'handling')}
-                          className="text-[10px] glass-cell px-2 py-1 rounded-full text-status-caution">{t('rescue.markHandling')}</button>
-                      )}
-                      {st !== 'resolved' && (
-                        <button onClick={() => setStatus(e.senderId, 'resolved')}
-                          className="text-[10px] bg-status-safe/20 text-status-safe px-2 py-1 rounded-full">{t('rescue.markResolved')}</button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* 回覆框 */}
-                  <div className="flex gap-1.5 mt-2">
-                    <input
-                      value={replyDraft[e.senderId] ?? ''}
-                      onChange={ev => setReplyDraft(prev => ({ ...prev, [e.senderId]: ev.target.value }))}
-                      onKeyDown={ev => { if (ev.key === 'Enter') reply(e.senderId, replyDraft[e.senderId] ?? '') }}
-                      placeholder={t('rescue.replyPlaceholder')}
-                      className="flex-1 glass-cell text-white text-xs rounded-full px-3 py-1.5 outline-none placeholder-white/30" />
-                    <button onClick={() => reply(e.senderId, replyDraft[e.senderId] ?? '')}
-                      disabled={!(replyDraft[e.senderId] ?? '').trim()}
-                      className="bg-white disabled:opacity-30 text-neutral-900 p-1.5 rounded-full shrink-0"><Send size={13} /></button>
-                  </div>
-                </div>
-              )
-            })}
+            ) : (
+              <SosBoard events={sos.sosEvents} myId={RESCUE_CENTER_ID} onReply={replySos} onStatus={setSosStatusFn} />
+            )}
           </div>
         </div>
 
-        {/* 群眾回報（可標記已處理 → 廣播通知並從各端移除） */}
+        {/* 群眾回報（合併為回報串，三段狀態：已收到 / 處理中 / 已處理） */}
         <div className="glass rounded-3xl p-4 mb-3 lg:mb-0 flex flex-col lg:min-h-0">
           <p className="text-xs text-white/45 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-            <MessageSquare size={12} />{t('rescue.reports', { n: activeReports.length })}
+            <MessageSquare size={12} />{t('rescue.reports', { n: activeThreads.length })}
           </p>
-          <div className="flex-1 overflow-y-auto no-scrollbar space-y-2">
-            {activeReports.length === 0 ? (
+          <div className="flex-1 overflow-y-auto thin-scrollbar space-y-2">
+            {activeThreads.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full py-16 text-white/30">
                 <MessageSquare size={24} className="mb-2 opacity-40" />
                 <p className="text-sm">{t('rescue.noReports')}</p>
               </div>
-            ) : activeReports.slice().reverse().map(r => (
-              <div key={r.id} className="glass-cell rounded-2xl p-3">
-                <ReportCard
-                  report={r}
-                  clientId={cid}
-                  onVote={dir => { const u = voteReport(r.id, dir, cid); if (u) shareReport(u) }}
-                  onResolve={() => { const u = resolveReport(r.id, t('rescue.resolvedNote')); if (u) shareReport(u) }}
+            ) : activeThreads.map(th => (
+              <div key={th.threadId} className="glass-cell rounded-2xl p-3">
+                <ReportThreadCard
+                  thread={th} clientId={cid}
+                  onVote={onVote}
+                  onThreadStatus={status => onThreadStatus(th.threadId, status)}
                 />
               </div>
             ))}
+            {/* 已處理歷史（保留紀錄，不在地圖顯示） */}
+            {resolvedThreads.length > 0 && (
+              <details className="mt-2">
+                <summary className="text-[11px] text-white/40 cursor-pointer py-1">{t('rescue.resolvedHistory', { n: resolvedThreads.length })}</summary>
+                <div className="space-y-2 mt-1">
+                  {resolvedThreads.map(th => (
+                    <div key={th.threadId} className="glass-cell rounded-2xl p-3 opacity-70">
+                      <ReportThreadCard thread={th} clientId={cid} />
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
           </div>
         </div>
 
-        {/* 地圖 */}
+        {/* 地圖：預設顯示 SOS 白點 + 回報菱形，點 marker 看詳情 */}
         <div className="glass rounded-3xl p-4 flex flex-col lg:min-h-0">
           <p className="text-xs text-white/45 uppercase tracking-wider mb-2">{t('mesh.mapTitle')}</p>
           <div className="flex-1 min-h-[300px]">
-            <MeshMap myPos={DEFAULT_LOC} peers={mapPeers} flashId={null} meLabel={t('rescue.title')} noPosLabel={t('rescue.noPos')} />
+            <MeshMap myPos={DEFAULT_LOC} peers={[]} flashId={null} meLabel={t('rescue.title')} noPosLabel={t('rescue.noPos')}
+              sosPoints={sosPoints} extra={reportMarkers} />
           </div>
         </div>
       </div>

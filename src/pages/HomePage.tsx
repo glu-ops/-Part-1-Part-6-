@@ -95,9 +95,6 @@ export default function HomePage() {
       {/* 地圖背景（滿版，浮層 UI 疊於其上） */}
       <ShelterMap onSelect={setSelected} />
 
-      {/* 區域風險評估面板（地震/淹水） */}
-      <RiskPanel />
-
       {/* 災害警告列（浮動 chip） */}
       {dangerCount > 0 && (
         <div className="absolute z-[500] top-16 left-1/2 -translate-x-1/2 lg:top-20 glass rounded-full px-4 py-1.5 flex items-center gap-2 text-xs text-status-danger whitespace-nowrap max-w-[calc(100vw-1.5rem)] overflow-hidden">
@@ -106,16 +103,21 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* 右上：災害蔓延預測 / 時間模擬 */}
-      <div className="absolute top-32 right-3 z-[500] glass rounded-2xl px-3 py-2.5 w-44 lg:top-20 lg:right-4">
-        <p className="text-[11px] text-white/55 mb-0.5">{t('home.timeSim')}</p>
-        <p className="text-[10px] text-white/40 mb-1.5">{t(SIM_LABEL_KEY[disaster])}</p>
-        <input
-          type="range" min={0} max={horizon} step={step} value={timeOffset}
-          onChange={e => setTimeOffset(+e.target.value)}
-          className="w-full h-1 cursor-pointer"
-        />
-        <p className="text-[11px] text-white/80 text-right mt-1 num">{fmtTime(timeOffset)}</p>
+      {/* 右上：時間模擬 + 區域風險評估（堆疊） */}
+      <div className="absolute top-32 right-3 z-[500] w-48 max-w-[calc(100vw-1.5rem)] space-y-2 lg:top-20 lg:right-4">
+        <div className="glass rounded-2xl px-3 py-2.5">
+          <p className="text-[11px] text-white/55 mb-0.5">{t('home.timeSim')}</p>
+          <p className="text-[10px] text-white/40 mb-1.5">{t(SIM_LABEL_KEY[disaster])}</p>
+          <input
+            type="range" min={0} max={horizon} step={step} value={timeOffset}
+            onChange={e => setTimeOffset(+e.target.value)}
+            className="w-full h-1 cursor-pointer"
+          />
+          <p className="text-[11px] text-white/80 text-right mt-1 num">{fmtTime(timeOffset)}</p>
+        </div>
+
+        {/* 區域風險評估（地震/淹水）— 置於時間模擬下方 */}
+        <RiskPanel />
       </div>
 
       {/* 左下：圖例（依圖層分組；形狀=圖層、顏色=嚴重度；可收合） */}

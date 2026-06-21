@@ -1,8 +1,14 @@
 import { createContext, useContext, useState, useMemo, useRef, useCallback } from 'react'
 import type { ReactNode } from 'react'
-import type { Shelter, CrowdReport } from '../types'
+import type { Shelter, CrowdReport, HandleStatus } from '../types'
 import sheltersData from '../data/shelters.json'
 import reportsData from '../data/reports.json'
+
+// 處理狀態優先序（合併時取較進階者）
+const STATUS_RANK: Record<HandleStatus, number> = { active: 0, received: 1, handling: 2, resolved: 3 }
+function advancedStatus(a: HandleStatus = 'active', b: HandleStatus = 'active'): HandleStatus {
+  return STATUS_RANK[a] >= STATUS_RANK[b] ? a : b
+}
 
 /**
  * 每分鐘湧入人數（人/分）。
@@ -41,11 +47,14 @@ function normalize(r: Partial<CrowdReport> & { id: string }): CrowdReport {
     lat: r.lat ?? 0,
     lng: r.lng ?? 0,
     photos: r.photos ?? [],
+    attachments: r.attachments ?? [],
     upVoters: r.upVoters ?? [],
     downVoters: r.downVoters ?? [],
     status: r.status ?? 'active',
     resolvedNote: r.resolvedNote,
     author: r.author,
+    authorName: r.authorName,
+    threadId: r.threadId ?? r.id,   // 缺省自成一串
     version: r.version ?? 1,
     id: r.id,
   }
@@ -55,29 +64,40 @@ function uniq(a: string[] = [], b: string[] = []): string[] {
   return [...new Set([...a, ...b])]
 }
 
-/** 合併兩筆同 id 回報：投票取聯集、狀態取已處理優先、版本取大 */
+/** 合併兩筆同 id 回報：投票取聯集、狀態取較進階、版本取大 */
 function mergeOne(a: CrowdReport, b: CrowdReport): CrowdReport {
   const newer = b.version >= a.version ? b : a
   return {
     ...newer,
     upVoters: uniq(a.upVoters, b.upVoters),
     downVoters: uniq(a.downVoters, b.downVoters),
-    status: a.status === 'resolved' || b.status === 'resolved' ? 'resolved' : 'active',
+    status: advancedStatus(a.status, b.status),
     resolvedNote: b.resolvedNote ?? a.resolvedNote,
+    threadId: a.threadId ?? b.threadId ?? a.id,
     version: Math.max(a.version, b.version),
   }
+}
+
+export interface ReportThread {
+  threadId: string
+  reports: CrowdReport[]            // 依時間排序（舊→新）
+  latest: CrowdReport              // 串中最新一筆
+  status: HandleStatus             // 串的整體狀態（取最進階）
 }
 
 interface ShelterCtx {
   shelters: Shelter[]
   reports: CrowdReport[]            // 含已處理（tombstone），UI 自行過濾
   activeReports: CrowdReport[]      // status !== 'resolved'
+  reportThreads: ReportThread[]    // 依 threadId 分組（同地點多人補充串）
   timeOffset: number
   setTimeOffset: (n: number) => void
   addReport: (r: CrowdReport) => boolean
-  mergeReport: (r: CrowdReport) => { changed: boolean; merged: CrowdReport }
+  mergeReport: (r: CrowdReport) => { changed: boolean; merged: CrowdReport; prevStatus?: HandleStatus; isNew: boolean }
   voteReport: (id: string, dir: 'up' | 'down', voterId: string) => CrowdReport | null
   resolveReport: (id: string, note?: string) => CrowdReport | null
+  setReportStatus: (id: string, status: HandleStatus, note?: string) => CrowdReport | null
+  setThreadStatus: (threadId: string, status: HandleStatus, note?: string) => CrowdReport[]
 }
 
 const ShelterContext = createContext<ShelterCtx | null>(null)
@@ -135,16 +155,17 @@ export function ShelterProvider({ children }: { children: ReactNode }) {
     return persist(next)
   }, [persist])
 
-  // 來自 Mesh 的回報 → 合併；回傳是否有變動（決定要不要再轉發）
+  // 來自 Mesh 的回報 → 合併；回傳是否有變動（決定要不要再轉發）與前一狀態（供通知）
   const mergeReport = useCallback((incoming: CrowdReport) => {
     const n = normalize(incoming)
     const cur = reportsRef.current
     const i = cur.findIndex(r => r.id === n.id)
-    if (i === -1) { persist([...cur, n]); return { changed: true, merged: n } }
+    if (i === -1) { persist([...cur, n]); return { changed: true, merged: n, isNew: true } }
+    const prevStatus = cur[i].status
     const merged = mergeOne(cur[i], n)
     const changed = JSON.stringify(merged) !== JSON.stringify(cur[i])
     if (changed) { const next = [...cur]; next[i] = merged; persist(next) }
-    return { changed, merged }
+    return { changed, merged, prevStatus, isNew: false }
   }, [persist])
 
   const voteReport = useCallback((id: string, dir: 'up' | 'down', voterId: string): CrowdReport | null => {
@@ -160,21 +181,66 @@ export function ShelterProvider({ children }: { children: ReactNode }) {
     return updated
   }, [persist])
 
-  const resolveReport = useCallback((id: string, note?: string): CrowdReport | null => {
+  // 指揮中心推進處理狀態：active→received→handling→resolved
+  const setReportStatus = useCallback((id: string, status: HandleStatus, note?: string): CrowdReport | null => {
     const cur = reportsRef.current
     const i = cur.findIndex(r => r.id === id)
     if (i === -1) return null
-    const updated: CrowdReport = { ...cur[i], status: 'resolved', resolvedNote: note, version: cur[i].version + 1 }
+    const updated: CrowdReport = {
+      ...cur[i], status,
+      resolvedNote: status === 'resolved' ? (note ?? cur[i].resolvedNote) : cur[i].resolvedNote,
+      version: cur[i].version + 1,
+    }
     const next = [...cur]; next[i] = updated; persist(next)
     return updated
   }, [persist])
 
+  // 整串推進狀態（同 threadId 的所有補充一起標記）→ 回傳更新後的回報供 Mesh 廣播
+  const setThreadStatus = useCallback((threadId: string, status: HandleStatus, note?: string): CrowdReport[] => {
+    const cur = reportsRef.current
+    const updated: CrowdReport[] = []
+    const next = cur.map(r => {
+      if ((r.threadId ?? r.id) !== threadId) return r
+      const u: CrowdReport = {
+        ...r, status,
+        resolvedNote: status === 'resolved' ? (note ?? r.resolvedNote) : r.resolvedNote,
+        version: r.version + 1,
+      }
+      updated.push(u)
+      return u
+    })
+    if (updated.length) persist(next)
+    return updated
+  }, [persist])
+
+  // 標記已處理（resolved）— 保留歷史，僅地圖過濾
+  const resolveReport = useCallback((id: string, note?: string): CrowdReport | null => {
+    return setReportStatus(id, 'resolved', note)
+  }, [setReportStatus])
+
   const activeReports = useMemo(() => reports.filter(r => r.status !== 'resolved'), [reports])
+
+  // 依 threadId 分組成回報串（同地點/事件多人補充）
+  const reportThreads = useMemo<ReportThread[]>(() => {
+    const groups = new Map<string, CrowdReport[]>()
+    for (const r of reports) {
+      const key = r.threadId ?? r.id
+      const arr = groups.get(key); if (arr) arr.push(r); else groups.set(key, [r])
+    }
+    const threads: ReportThread[] = []
+    for (const [threadId, list] of groups) {
+      const sorted = [...list].sort((a, b) => +new Date(a.reported_at) - +new Date(b.reported_at))
+      const status = sorted.reduce<HandleStatus>((acc, r) => advancedStatus(acc, r.status), 'active')
+      threads.push({ threadId, reports: sorted, latest: sorted[sorted.length - 1], status })
+    }
+    // 最新活動在前
+    return threads.sort((a, b) => +new Date(b.latest.reported_at) - +new Date(a.latest.reported_at))
+  }, [reports])
 
   return (
     <ShelterContext.Provider value={{
-      shelters, reports, activeReports, timeOffset, setTimeOffset,
-      addReport, mergeReport, voteReport, resolveReport,
+      shelters, reports, activeReports, reportThreads, timeOffset, setTimeOffset,
+      addReport, mergeReport, voteReport, resolveReport, setReportStatus, setThreadStatus,
     }}>
       {children}
     </ShelterContext.Provider>
