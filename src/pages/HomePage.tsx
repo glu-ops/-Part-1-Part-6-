@@ -95,16 +95,16 @@ export default function HomePage() {
       {/* 地圖背景（滿版，浮層 UI 疊於其上） */}
       <ShelterMap onSelect={setSelected} />
 
-      {/* 災害警告列（浮動 chip） */}
+      {/* 災害警告列（浮動 chip）— 行動版下移避免蓋到搜尋列 */}
       {dangerCount > 0 && (
-        <div className="absolute z-[500] top-16 left-1/2 -translate-x-1/2 lg:top-20 glass rounded-full px-4 py-1.5 flex items-center gap-2 text-xs text-status-danger whitespace-nowrap max-w-[calc(100vw-1.5rem)] overflow-hidden">
+        <div className="absolute z-[500] top-28 left-1/2 -translate-x-1/2 lg:top-20 glass rounded-full px-4 py-1.5 flex items-center gap-2 text-xs text-status-danger whitespace-nowrap max-w-[calc(100vw-1.5rem)] overflow-hidden">
           <span className="w-1.5 h-1.5 rounded-full bg-status-danger animate-pulse flex-shrink-0" />
           <span className="truncate">{t('home.dangerBanner', { disaster: t(`disaster.${disaster}`), n: dangerCount })}</span>
         </div>
       )}
 
-      {/* 右上：時間模擬 + 區域風險評估（堆疊） */}
-      <div className="absolute top-32 right-3 z-[500] w-48 max-w-[calc(100vw-1.5rem)] space-y-2 lg:top-20 lg:right-4">
+      {/* 右上：時間模擬 + 區域風險評估（堆疊）— 行動版下移避免蓋到搜尋列/警告列 */}
+      <div className="absolute top-[10.5rem] right-3 z-[500] w-44 max-w-[calc(100vw-1.5rem)] space-y-2 sm:top-40 sm:w-48 lg:top-20 lg:right-4">
         <div className="glass rounded-2xl px-3 py-2.5">
           <p className="text-[11px] text-white/55 mb-0.5">{t('home.timeSim')}</p>
           <p className="text-[10px] text-white/40 mb-1.5">{t(SIM_LABEL_KEY[disaster])}</p>

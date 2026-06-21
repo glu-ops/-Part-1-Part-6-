@@ -8,7 +8,7 @@ import FloodOverlay from './FloodOverlay'
 import RiskOverlay from './RiskOverlay'
 import ReportOverlay from './ReportOverlay'
 import LocationSearch from './LocationSearch'
-import { FlyTo } from './mapHelpers'
+import { FlyTo, InvalidateOnMount } from './mapHelpers'
 import { useShelters } from '../../contexts/ShelterContext'
 import { useUser } from '../../contexts/UserContext'
 import { useFocus } from '../../contexts/FocusContext'
@@ -73,6 +73,7 @@ export default function ShelterMap({ onSelect }: Props) {
           maxZoom={20}
         />
 
+        <InvalidateOnMount />
         <BuildingLayer />
         <FloodOverlay />
         <RiskOverlay />

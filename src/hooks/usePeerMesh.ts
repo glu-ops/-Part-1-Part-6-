@@ -107,6 +107,7 @@ export function usePeerMesh({ fixedId, myName, myPos, onSosEvent, onReport, getS
   const onReportRef    = useRef(onReport)
   const syncRef        = useRef(getSyncMessages)
   const registerRef    = useRef<(conn: any) => void>(() => {})
+  const ensureRescueRef = useRef<() => void>(() => {})  // 市民端主動連指揮中心 hub
 
   useEffect(() => { myPosRef.current = myPos ?? null }, [myPos])
   useEffect(() => { myNameRef.current = myName ?? '' }, [myName])
@@ -239,8 +240,10 @@ export function usePeerMesh({ fixedId, myName, myPos, onSosEvent, onReport, getS
       peerRef.current = peer
       peer.on('open', (id: string) => {
         myIdRef.current = id; setMyId(id); setLoading(false); setError(null)
-        // 自動重連已知對象（市民端）
-        if (!isRescue) getKnownPeers().forEach(p => dialPeer(p.id, true))
+        if (!isRescue) {
+          getKnownPeers().forEach(p => dialPeer(p.id, true))  // 自動重連已知對象
+          ensureRescueRef.current()                            // 主動連指揮中心 hub
+        }
       })
       peer.on('error', (err: any) => {
         const type = err?.type ?? err?.message ?? 'peer-error'
@@ -273,16 +276,17 @@ export function usePeerMesh({ fixedId, myName, myPos, onSosEvent, onReport, getS
     }
   }, [fixedId, isRescue, dialPeer])
 
-  // ── 每 30 秒廣播位置 ──────────────────────────────────
+  // ── 每 30 秒廣播位置 + 維持指揮中心 hub 連線（hub 之前離線、之後上線可補連） ──
   useEffect(() => {
     const iv = setInterval(() => {
+      if (!isRescue && peerRef.current && !rescueConnRef.current) ensureRescueRef.current()
       const pos = myPosRef.current
       if (!pos || connsRef.current.size === 0) return
       const m = posMsg(pos)
       connsRef.current.forEach(conn => { if (conn.open) { try { conn.send(m) } catch { /* ignore */ } } })
     }, POS_INTERVAL_MS)
     return () => clearInterval(iv)
-  }, [posMsg])
+  }, [posMsg, isRescue])
 
   // ── 對外 API ──────────────────────────────────────────
   const sendToAll = useCallback((m: MeshMessage) => {
@@ -317,21 +321,34 @@ export function usePeerMesh({ fixedId, myName, myPos, onSosEvent, onReport, getS
     sendToAll(m); pushLocal(m)
   }, [sendToAll, pushLocal, baseMsg])
 
-  // B 層：送給寫死的指揮中心（必要時建立連線，並監聽其回覆）
-  const sendToRescue = useCallback((m: MeshMessage) => {
-    if (isRescue || !peerRef.current) return
-    const existing = rescueConnRef.current
-    if (existing && existing.open) { try { existing.send(m) } catch { /* ignore */ } return }
-    try {
-      const conn = peerRef.current.connect(RESCUE_CENTER_ID, { reliable: true })
-      if (!conn) return
-      rescueConnRef.current = conn
-      // 指揮中心回覆 / SOS 狀態演變 → 走 handleData（含 sosEvent 去重、系統訊息）
-      conn.on('data', (d: any) => handleData(RESCUE_CENTER_ID, d))
-      conn.on('open', () => { try { conn.send(m) } catch { /* ignore */ } })
-      conn.on('error', () => { /* 指揮中心離線 → 靜默 */ })
-    } catch { /* ignore */ }
+  // 市民端與指揮中心的連線（hub）：用來收發回報/SOS 與回覆。
+  // 指揮中心是全站轉發樞紐，市民開機就主動連上 → 別人的回報/SOS 經 hub 轉發給所有人。
+  const ensureRescueConn = useCallback(() => {
+    if (isRescue || !peerRef.current) return null
+    if (rescueConnRef.current) return rescueConnRef.current   // 已存在（連線中或已連）
+    let conn: any
+    try { conn = peerRef.current.connect(RESCUE_CENTER_ID, { reliable: true }) } catch { return null }
+    if (!conn) return null
+    rescueConnRef.current = conn
+    // 指揮中心送來的回報/SOS/回覆 → 走 handleData（去重、合併、再轉發給自己其他 peer）
+    conn.on('data', (d: any) => handleData(RESCUE_CENTER_ID, d))
+    conn.on('open', () => {
+      // 連上 hub → 把本機未結案 SOS 與進行中回報推給 hub，讓 hub 與其他人補齊
+      const sync = syncRef.current?.() ?? []
+      for (const m of sync) { try { conn.send(m) } catch { /* ignore */ } }
+    })
+    conn.on('close', () => { if (rescueConnRef.current === conn) rescueConnRef.current = null })
+    conn.on('error', () => { if (rescueConnRef.current === conn) rescueConnRef.current = null })
+    return conn
   }, [isRescue, handleData])
+  ensureRescueRef.current = ensureRescueConn
+
+  const sendToRescue = useCallback((m: MeshMessage) => {
+    const conn = ensureRescueConn()
+    if (!conn) return
+    if (conn.open) { try { conn.send(m) } catch { /* ignore */ } }
+    else conn.on('open', () => { try { conn.send(m) } catch { /* ignore */ } })
+  }, [ensureRescueConn])
 
   // F2.7-D/E/F：分享 / 演變 SOS 事件（建立、回覆、狀態更新都走這裡）。
   // 以 eventId+version 去重 → 同一次求救只顯示一次（修正重複）。依層級決定路由：

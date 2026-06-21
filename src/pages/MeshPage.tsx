@@ -213,7 +213,7 @@ export default function MeshPage() {
           <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-white inline-block" style={{ boxShadow: '0 0 5px rgba(255,255,255,.9)' }} />{t('mesh.sosDot')}</span>
         </span>
       </div>
-      <div className="flex-1 min-h-[280px]">
+      <div className="flex-1 min-h-[55vh] lg:min-h-[260px]">
         <MeshMap myPos={userLoc} peers={peerViews.filter(p => p.online)} flashId={flashId}
           meLabel={myName || t('mesh.me')} noPosLabel={t('mesh.noPos')}
           sosPoints={openSosPoints} focusSos={focusSos} />

@@ -152,6 +152,9 @@ const zh: Dict = {
   'report.dropHint': '點擊或拖曳照片到此',
   'report.recent': '最近回報',
   'report.locate': '定位',
+  'report.shelterLocation': '回報位置（此避難所）',
+  'report.shelterLocHint': '已自動使用此避難所的座標，無需手動選位置',
+  'detail.reportHere': '回報問題',
 
   'mesh.title': 'Mesh P2P 通訊',
   'mesh.connected': '已連線',
@@ -492,6 +495,9 @@ const en: Dict = {
   'report.dropHint': 'Click or drag photos here',
   'report.recent': 'Recent reports',
   'report.locate': 'Locate',
+  'report.shelterLocation': 'Report location (this shelter)',
+  'report.shelterLocHint': 'Using this shelter’s coordinates automatically — no manual pin needed',
+  'detail.reportHere': 'Report issue',
 
   'mesh.title': 'Mesh P2P chat',
   'mesh.connected': 'Connected',

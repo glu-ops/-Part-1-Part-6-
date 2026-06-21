@@ -58,10 +58,14 @@ function genId(): string {
  */
 export function MeshProvider({ children }: { children: ReactNode }) {
   const { userLoc } = useUser()
-  const { mergeReport } = useShelters()
+  const { mergeReport, activeReports } = useShelters()
   const { myId, name } = useIdentity()
   const { t } = useI18n()
   const sos = useSosStore()
+
+  // 供「連線時同步」用：未結案 SOS + 進行中回報（後者上限避免過大）
+  const activeReportsRef = useRef(activeReports)
+  activeReportsRef.current = activeReports
 
   const [toast, setToast] = useState<{ kind: 'sos' | 'done'; text: string } | null>(null)
   const [sosFlashId, setSosFlashId] = useState<string | null>(null)
@@ -131,13 +135,19 @@ export function MeshProvider({ children }: { children: ReactNode }) {
     }
   }, [sos, addNotice, showToast, t])
 
-  // ── 新連線時推送未結案 SOS（重連同步） ──
+  // ── 新連線時推送：未結案 SOS + 進行中回報（讓對方/hub 補齊既有狀態） ──
   const getSyncMessages = useCallback((): MeshMessage[] => {
-    return sos.getOpenEvents().map(e => ({
+    const sosMsgs: MeshMessage[] = sos.getOpenEvents().map(e => ({
       msgId: genId(), type: 'sosEvent', eventId: e.id, version: e.version,
       sos: e, layer: e.layer, senderId: e.senderId, senderName: e.senderName, ts: Date.now(),
     }))
-  }, [sos])
+    // 回報含照片/附件可能較大，僅同步最近 20 筆進行中回報
+    const reportMsgs: MeshMessage[] = activeReportsRef.current.slice(-20).map(r => ({
+      msgId: genId(), type: 'report', eventId: r.id, version: r.version,
+      report: r, senderId: r.author ?? myId, senderName: r.authorName, ts: Date.now(),
+    }))
+    return [...sosMsgs, ...reportMsgs]
+  }, [sos, myId])
 
   const mesh = usePeerMesh({ fixedId: myId, myName: name, myPos: userLoc, onSosEvent, onReport, getSyncMessages })
 

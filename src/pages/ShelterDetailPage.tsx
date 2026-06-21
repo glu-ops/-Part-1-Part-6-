@@ -303,10 +303,17 @@ export default function ShelterDetailPage() {
       </div>
 
       {/* 底部 CTA */}
-      <div className="fixed bottom-16 inset-x-0 px-4 pb-2 pt-6 bg-gradient-to-t from-[#1d1e22] via-[#1d1e22]/80 to-transparent max-w-2xl mx-auto">
+      <div className="fixed bottom-16 inset-x-0 px-4 pb-2 pt-6 bg-gradient-to-t from-[#1d1e22] via-[#1d1e22]/80 to-transparent max-w-2xl mx-auto flex gap-2">
+        <button
+          onClick={() => nav(`/report?shelter=${s.shelter_id}`)}
+          className="glass-cell text-white font-semibold rounded-full py-3.5 px-5 flex items-center justify-center gap-2 active:scale-[.98] transition-all shrink-0"
+        >
+          <MessageCircle size={18} />
+          {t('detail.reportHere')}
+        </button>
         <button
           onClick={() => nav(`/route?dest=${s.shelter_id}`)}
-          className="w-full bg-white text-neutral-900 font-bold rounded-full py-3.5 flex items-center justify-center gap-2 hover:bg-white/90 active:scale-[.98] transition-all"
+          className="flex-1 bg-white text-neutral-900 font-bold rounded-full py-3.5 flex items-center justify-center gap-2 hover:bg-white/90 active:scale-[.98] transition-all"
         >
           <Navigation size={18} />
           {t('detail.planRouteHere')}

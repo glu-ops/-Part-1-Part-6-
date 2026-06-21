@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { CheckCircle, MapPin, LocateFixed, Loader2, ImagePlus, X } from 'lucide-react'
 import { useShelters, getClientId } from '../contexts/ShelterContext'
 import { useUser } from '../contexts/UserContext'
@@ -36,9 +37,12 @@ export default function ReportPage() {
   const { t } = useI18n()
   const isDesktop = useIsDesktop()
   const cid = getClientId()
+  // 從避難所卡片進入：/report?shelter=<id> → 預選該避難所、用其正確座標
+  const [searchParams] = useSearchParams()
+  const shelterParam = searchParams.get('shelter') ?? ''
   const [type, setType] = useState<ReportType>('crowd')
   const [severity, setSeverity] = useState<ResourceStatus>('green')
-  const [shelterId, setShelterId] = useState('')
+  const [shelterId, setShelterId] = useState(shelterParam)
   const [note, setNote] = useState('')
   const [loc, setLoc] = useState(userLoc)
   const [files, setFiles] = useState<Attachment[]>([])
@@ -46,6 +50,10 @@ export default function ReportPage() {
   const [saveWarning, setSaveWarning] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const locTouched = useRef(false)
+
+  // 選定避難所時，回報位置一律採用避難所正確座標（不被手動位置覆蓋）
+  const selectedShelter = shelters.find(s => s.shelter_id === shelterId)
+  const reportLoc = selectedShelter ? { lat: selectedShelter.lat, lng: selectedShelter.lng } : loc
 
   useEffect(() => {
     if (!locTouched.current) setLoc(userLoc)
@@ -70,7 +78,7 @@ export default function ReportPage() {
       shelter_id: shelterId || null,
       type, severity, note,
       reported_at: new Date().toISOString(),
-      lat: loc.lat, lng: loc.lng,
+      lat: reportLoc.lat, lng: reportLoc.lng,   // 選避難所時用其座標，否則用手動位置
       photos: [],
       attachments: files,
       upVoters: [], downVoters: [],
@@ -144,20 +152,39 @@ export default function ReportPage() {
 
         {/* 回報位置 */}
         <div className="glass-cell rounded-2xl p-4">
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-xs text-white/45 flex items-center gap-1.5">
-              <MapPin size={13} className="text-white/60" />{t('report.location')}
-            </label>
-            <button onClick={() => { locateMe().then(setPickedLoc).catch(() => {}) }}
-              className="flex items-center gap-1 text-[11px] text-white glass-cell rounded-full px-2.5 py-1 shrink-0">
-              {locating ? <Loader2 size={12} className="animate-spin" /> : <LocateFixed size={12} />}{t('report.locate')}
-            </button>
-          </div>
-          {/* 行動版：內嵌選點地圖 */}
-          {!isDesktop && (
-            <LocationPicker value={loc} onChange={setPickedLoc} />
+          {selectedShelter ? (
+            // 針對避難所回報：直接使用該避難所正確座標，免手動選位置
+            <>
+              <label className="text-xs text-white/45 flex items-center gap-1.5 mb-2">
+                <MapPin size={13} className="text-white/60" />{t('report.shelterLocation')}
+              </label>
+              <div className="flex items-center gap-2 glass-cell rounded-xl px-3 py-2.5">
+                <MapPin size={15} className="text-status-safe shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-sm text-white font-medium truncate">{selectedShelter.name}</p>
+                  <p className="text-[11px] text-white/45 num">{reportLoc.lat.toFixed(5)}, {reportLoc.lng.toFixed(5)}</p>
+                </div>
+              </div>
+              <p className="text-[10px] text-white/40 mt-1.5">{t('report.shelterLocHint')}</p>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs text-white/45 flex items-center gap-1.5">
+                  <MapPin size={13} className="text-white/60" />{t('report.location')}
+                </label>
+                <button onClick={() => { locateMe().then(setPickedLoc).catch(() => {}) }}
+                  className="flex items-center gap-1 text-[11px] text-white glass-cell rounded-full px-2.5 py-1 shrink-0">
+                  {locating ? <Loader2 size={12} className="animate-spin" /> : <LocateFixed size={12} />}{t('report.locate')}
+                </button>
+              </div>
+              {/* 行動版：內嵌選點地圖 */}
+              {!isDesktop && (
+                <LocationPicker value={loc} onChange={setPickedLoc} />
+              )}
+              <p className="text-[11px] text-white/45 mt-2 num">{t('report.coords', { lat: loc.lat.toFixed(5), lng: loc.lng.toFixed(5) })}</p>
+            </>
           )}
-          <p className="text-[11px] text-white/45 mt-2 num">{t('report.coords', { lat: loc.lat.toFixed(5), lng: loc.lng.toFixed(5) })}</p>
         </div>
 
         {/* Note */}
@@ -221,10 +248,11 @@ export default function ReportPage() {
 
   return (
     <div className="lg:fixed lg:inset-0">
-      {/* 桌面：右側全幅地圖（可點選回報位置 + 顯示避難所/回報/災害範圍） */}
+      {/* 桌面：右側全幅地圖（可點選回報位置 + 顯示避難所/回報/災害範圍）。
+          選定避難所時定位該所、停用手動改點（座標以避難所為準）。 */}
       {isDesktop && (
         <div className="absolute inset-0">
-          <LocationPicker value={loc} onChange={setPickedLoc} className="w-full h-full" showContext />
+          <LocationPicker value={reportLoc} onChange={selectedShelter ? () => {} : setPickedLoc} className="w-full h-full" showContext />
         </div>
       )}
 

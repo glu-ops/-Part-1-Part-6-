@@ -80,11 +80,11 @@ function DisasterMenu() {
     <div className="relative shrink-0" ref={ref}>
       <button
         onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-1.5 glass-cell text-white text-xs rounded-full px-2.5 py-1.5"
+        className="flex items-center gap-1.5 glass-cell text-white text-xs rounded-full px-2 py-1.5 sm:px-2.5"
         aria-label={t(`disaster.${disaster}`)}
       >
         <Current size={14} />
-        <span>{t(`disaster.${disaster}`)}</span>
+        <span className="hidden min-[380px]:inline">{t(`disaster.${disaster}`)}</span>
         <ChevronDown size={12} className="text-white/55" />
       </button>
       {open && (
@@ -114,8 +114,9 @@ export default function Header() {
   const { t } = useI18n()
 
   return (
-    <header className="fixed z-50 h-14 flex items-center gap-2 px-3
+    <header className="fixed z-50 h-14 flex items-center gap-1.5 px-2 overflow-hidden
       top-0 inset-x-0 glass
+      sm:gap-2 sm:px-3
       lg:top-3 lg:inset-x-4 lg:rounded-2xl lg:glass-nav lg:px-4 lg:gap-3">
       {/* Logo + 名稱 */}
       <div className="flex items-center gap-1.5 text-white font-bold text-sm shrink-0">
@@ -130,7 +131,7 @@ export default function Header() {
         <select
           value={role}
           onChange={e => setRole(e.target.value as UserRole)}
-          className="glass-cell text-white text-xs rounded-full px-2.5 py-1.5 outline-none shrink-0"
+          className="glass-cell text-white text-xs rounded-full px-2 py-1.5 outline-none shrink-0 max-w-[5.5rem] sm:max-w-none sm:px-2.5"
         >
           {ROLES.map(r => (
             <option key={r} value={r}>{t(`role.${r}`)}</option>
