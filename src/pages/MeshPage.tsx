@@ -129,7 +129,7 @@ export default function MeshPage() {
 
   // ── 左欄：連線管理 ──
   const connectCol = (
-    <div className="glass rounded-3xl p-4 flex flex-col gap-3 mb-3 lg:mb-0 lg:overflow-y-auto no-scrollbar">
+    <div className="order-3 lg:order-none glass rounded-3xl p-4 flex flex-col gap-3 mb-3 lg:mb-0 lg:overflow-y-auto no-scrollbar">
       <div className="flex items-center gap-2">
         <Radio size={18} className="text-white/80" />
         <h1 className="text-lg font-bold text-white">{t('mesh.title')}</h1>
@@ -203,7 +203,7 @@ export default function MeshPage() {
 
   // ── 中欄：即時位置地圖 ──
   const mapCol = (
-    <div className="glass rounded-3xl p-4 flex flex-col mb-3 lg:mb-0">
+    <div className="order-1 lg:order-none glass rounded-3xl p-4 flex flex-col mb-3 lg:mb-0">
       <div className="flex items-center gap-2 mb-2">
         <MapPin size={14} className="text-white/60" />
         <p className="text-xs text-white/45 uppercase tracking-wider">{t('mesh.mapTitle')}</p>
@@ -213,7 +213,7 @@ export default function MeshPage() {
           <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-white inline-block" style={{ boxShadow: '0 0 5px rgba(255,255,255,.9)' }} />{t('mesh.sosDot')}</span>
         </span>
       </div>
-      <div className="flex-1 min-h-[55vh] lg:min-h-[260px]">
+      <div className="h-[58vh] min-h-[320px] lg:h-auto lg:flex-1 lg:min-h-[260px]">
         <MeshMap myPos={userLoc} peers={peerViews.filter(p => p.online)} flashId={flashId}
           meLabel={myName || t('mesh.me')} noPosLabel={t('mesh.noPos')}
           sosPoints={openSosPoints} focusSos={focusSos} />
@@ -229,7 +229,7 @@ export default function MeshPage() {
   ]
 
   const chatCol = (
-    <div className="glass rounded-3xl p-4 flex flex-col mb-3 lg:mb-0 lg:min-h-0">
+    <div className="order-2 lg:order-none glass rounded-3xl p-4 flex flex-col mb-3 lg:mb-0 lg:min-h-0">
       {/* SOS 事件看板（聊天框上方） */}
       <SosBoard events={sosEvents} myId={myId} onReply={replySos} onSelfSafe={markSosSafe} />
 
@@ -350,7 +350,8 @@ export default function MeshPage() {
         </div>
       )}
 
-      <div className="lg:grid lg:grid-cols-[320px_1fr_380px] lg:gap-4 lg:h-full">
+      {/* 行動版：單欄、地圖優先（map → 聊天/SOS → 連線管理）；桌面維持三欄（來源順序） */}
+      <div className="flex flex-col lg:grid lg:grid-cols-[320px_1fr_380px] lg:gap-4 lg:h-full">
         {connectCol}
         {mapCol}
         {chatCol}

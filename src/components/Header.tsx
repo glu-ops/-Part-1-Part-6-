@@ -114,7 +114,7 @@ export default function Header() {
   const { t } = useI18n()
 
   return (
-    <header className="fixed z-50 h-14 flex items-center gap-1.5 px-2 overflow-hidden
+    <header className="fixed z-[1100] h-14 flex items-center gap-1.5 px-2
       top-0 inset-x-0 glass
       sm:gap-2 sm:px-3
       lg:top-3 lg:inset-x-4 lg:rounded-2xl lg:glass-nav lg:px-4 lg:gap-3">

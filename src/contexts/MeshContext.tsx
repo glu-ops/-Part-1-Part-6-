@@ -58,14 +58,15 @@ function genId(): string {
  */
 export function MeshProvider({ children }: { children: ReactNode }) {
   const { userLoc } = useUser()
-  const { mergeReport, activeReports } = useShelters()
+  const { mergeReport, reports } = useShelters()
   const { myId, name } = useIdentity()
   const { t } = useI18n()
   const sos = useSosStore()
 
-  // 供「連線時同步」用：未結案 SOS + 進行中回報（後者上限避免過大）
-  const activeReportsRef = useRef(activeReports)
-  activeReportsRef.current = activeReports
+  // 供「連線時同步」用：含已處理（resolved）回報，讓重連的人也能收到「已處理」
+  // 狀態並移除地圖 marker（僅同步最近 25 筆避免過大）
+  const reportsRef = useRef(reports)
+  reportsRef.current = reports
 
   const [toast, setToast] = useState<{ kind: 'sos' | 'done'; text: string } | null>(null)
   const [sosFlashId, setSosFlashId] = useState<string | null>(null)
@@ -141,11 +142,14 @@ export function MeshProvider({ children }: { children: ReactNode }) {
       msgId: genId(), type: 'sosEvent', eventId: e.id, version: e.version,
       sos: e, layer: e.layer, senderId: e.senderId, senderName: e.senderName, ts: Date.now(),
     }))
-    // 回報含照片/附件可能較大，僅同步最近 20 筆進行中回報
-    const reportMsgs: MeshMessage[] = activeReportsRef.current.slice(-20).map(r => ({
-      msgId: genId(), type: 'report', eventId: r.id, version: r.version,
-      report: r, senderId: r.author ?? myId, senderName: r.authorName, ts: Date.now(),
-    }))
+    // 回報含照片/附件可能較大，僅同步最近 25 筆（含 resolved 以同步「已處理」）
+    const reportMsgs: MeshMessage[] = [...reportsRef.current]
+      .sort((a, b) => +new Date(b.reported_at) - +new Date(a.reported_at))
+      .slice(0, 25)
+      .map(r => ({
+        msgId: genId(), type: 'report' as const, eventId: r.id, version: r.version,
+        report: r, senderId: r.author ?? myId, senderName: r.authorName, ts: Date.now(),
+      }))
     return [...sosMsgs, ...reportMsgs]
   }, [sos, myId])
 

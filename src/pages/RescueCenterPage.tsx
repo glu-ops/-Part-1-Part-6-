@@ -32,9 +32,9 @@ function reportIcon(sev: ResourceStatus, count: number): L.DivIcon {
 
 export default function RescueCenterPage() {
   const { t } = useI18n()
-  const { reportThreads, activeReports, mergeReport, setThreadStatus, voteReport } = useShelters()
-  const activeReportsRef = useRef(activeReports)
-  activeReportsRef.current = activeReports
+  const { reportThreads, reports, mergeReport, setThreadStatus, voteReport } = useShelters()
+  const reportsRef = useRef(reports)   // 同步用：含 resolved，讓市民端重連也能移除已處理 marker
+  reportsRef.current = reports
   const cid = getClientId()
   const sos = useSosStore()
 
@@ -46,10 +46,13 @@ export default function RescueCenterPage() {
       msgId: genId(), type: 'sosEvent', eventId: e.id, version: e.version,
       sos: e, layer: e.layer, senderId: e.senderId, senderName: e.senderName, ts: Date.now(),
     }))
-    const reportMsgs: MeshMessage[] = activeReportsRef.current.slice(-20).map(r => ({
-      msgId: genId(), type: 'report', eventId: r.id, version: r.version,
-      report: r, senderId: r.author ?? RESCUE_CENTER_ID, senderName: r.authorName, ts: Date.now(),
-    }))
+    const reportMsgs: MeshMessage[] = [...reportsRef.current]
+      .sort((a, b) => +new Date(b.reported_at) - +new Date(a.reported_at))
+      .slice(0, 25)
+      .map(r => ({
+        msgId: genId(), type: 'report' as const, eventId: r.id, version: r.version,
+        report: r, senderId: r.author ?? RESCUE_CENTER_ID, senderName: r.authorName, ts: Date.now(),
+      }))
     return [...sosMsgs, ...reportMsgs]
   }, [sos])
 
