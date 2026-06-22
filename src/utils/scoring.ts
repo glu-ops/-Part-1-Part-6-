@@ -111,6 +111,21 @@ export function walkMinutes(
   fromLat: number, fromLng: number,
   toLat: number,   toLng: number,
 ): number {
+  return travelMinutes(fromLat, fromLng, toLat, toLng, 'walk')
+}
+
+const SPEED_M_PER_MIN: Record<string, number> = {
+  walk: 80,
+  bike: 250,
+  transit: 333,
+  car: 500,
+}
+
+export function travelMinutes(
+  fromLat: number, fromLng: number,
+  toLat: number,   toLng: number,
+  mode: string = 'walk',
+): number {
   const R = 6371000
   const dLat = ((toLat - fromLat) * Math.PI) / 180
   const dLng = ((toLng - fromLng) * Math.PI) / 180
@@ -120,5 +135,5 @@ export function walkMinutes(
     Math.cos((toLat  * Math.PI) / 180) *
     Math.sin(dLng / 2) ** 2
   const dist = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-  return Math.max(1, Math.round(dist / 80))
+  return Math.max(1, Math.round(dist / (SPEED_M_PER_MIN[mode] ?? 80)))
 }

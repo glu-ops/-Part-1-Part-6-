@@ -9,20 +9,20 @@ import { useShelters, getSurgeRate } from '../contexts/ShelterContext'
 import { useUser } from '../contexts/UserContext'
 import { useI18n } from '../i18n'
 import { useIsDesktop } from '../hooks'
-import { getOverallStatus, walkMinutes, calcRoleScore, sortByRole, minutesToSaturation } from '../utils/scoring'
+import { getOverallStatus, walkMinutes, travelMinutes, calcRoleScore, sortByRole, minutesToSaturation } from '../utils/scoring'
 import StatusBadge from '../components/ShelterCard/StatusBadge'
 import RouteMap from '../components/Map/RouteMap'
 import RoutePlanMap from '../components/Map/RoutePlanMap'
 import { DISASTERS, DISASTER_ICON } from '../disasters'
-import { getWalkingRoute, googleMapsDirUrl } from '../utils/geo'
-import type { RouteResult } from '../utils/geo'
+import { getRoute, googleMapsDirUrl } from '../utils/geo'
+import type { RouteResult, TravelMode } from '../utils/geo'
 import type { UserRole } from '../types'
 
-const TRAVEL = [
-  { key: 'walk', Icon: Footprints, active: true },
-  { key: 'bike', Icon: Bike, active: false },
-  { key: 'transit', Icon: Bus, active: false },
-  { key: 'car', Icon: Car, active: false },
+const TRAVEL: { key: TravelMode; Icon: typeof Footprints }[] = [
+  { key: 'walk', Icon: Footprints },
+  { key: 'bike', Icon: Bike },
+  { key: 'transit', Icon: Bus },
+  { key: 'car', Icon: Car },
 ]
 const ROLE_ICON: Record<UserRole, typeof User> = {
   adult: User, elderly: PersonStanding, pregnant: HeartPulse,
@@ -39,6 +39,7 @@ export default function RoutePage() {
   const nav = useNavigate()
 
   const [destId, setDestId] = useState(params.get('dest') ?? '')
+  const [travelMode, setTravelMode] = useState<TravelMode>('walk')
   const [route, setRoute] = useState<RouteResult | null>(null)
   const [routeLoading, setRouteLoading] = useState(false)
   const [routeError, setRouteError] = useState<string | null>(null)
@@ -57,7 +58,7 @@ export default function RoutePage() {
     let active = true
     setRoute(null)
     setRouteLoading(true); setRouteError(null)
-    getWalkingRoute(userLoc, { lat: dest.lat, lng: dest.lng }, ctrl.signal)
+    getRoute(userLoc, { lat: dest.lat, lng: dest.lng }, travelMode, ctrl.signal)
       .then(r => { if (active) setRoute(r) })
       .catch(e => {
         if (active && (e as Error).name !== 'AbortError') { setRoute(null); setRouteError(t('route.routeFail')) }
@@ -65,14 +66,15 @@ export default function RoutePage() {
       .finally(() => { if (active) setRouteLoading(false) })
     return () => { active = false; ctrl.abort() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dest, userLoc, reload])
+  }, [dest, userLoc, reload, travelMode])
 
-  const routeWalkMin = route ? Math.max(1, Math.round(route.duration / 60)) : null
-  const walkMin = dest ? (routeWalkMin ?? walkMinutes(userLoc.lat, userLoc.lng, dest.lat, dest.lng)) : null
+  const routeMin = route ? Math.max(1, Math.round(route.duration / 60)) : null
+  const estMin = dest ? (routeMin ?? travelMinutes(userLoc.lat, userLoc.lng, dest.lat, dest.lng, travelMode)) : null
+  const modeLabel = t(`route.mode.${travelMode}`)
   const destStatus = dest ? (dest.not_suitable_for.includes(disaster) ? 'danger' : getOverallStatus(dest, disaster)) : null
 
-  const arrivalOcc = dest && walkMin != null
-    ? Math.min(100, Math.round(((dest.capacity.current_estimate + getSurgeRate(dest.shelter_id) * walkMin) / dest.capacity.physical) * 100))
+  const arrivalOcc = dest && estMin != null
+    ? Math.min(100, Math.round(((dest.capacity.current_estimate + getSurgeRate(dest.shelter_id) * estMin) / dest.capacity.physical) * 100))
     : null
   const arrivalStatus = arrivalOcc != null
     ? (arrivalOcc > 90 ? 'danger' : arrivalOcc > 70 ? 'caution' : 'safe') : null
@@ -129,14 +131,15 @@ export default function RoutePage() {
         {/* 移動方式 */}
         <div className="glass-cell rounded-2xl p-3">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] text-white/45">{t('route.walkTime')}</span>
-            {walkMin != null && <span className="text-[11px] text-white/70 num">{t('route.walkAbout', { n: walkMin })}</span>}
+            <span className="text-[11px] text-white/45">{t('route.travelTime', { mode: modeLabel })}</span>
+            {estMin != null && <span className="text-[11px] text-white/70 num">{t('route.travelAbout', { mode: modeLabel, n: estMin })}</span>}
           </div>
           <div className="grid grid-cols-4 gap-2">
-            {TRAVEL.map(({ key, Icon, active }) => (
-              <div key={key} className={`flex items-center justify-center py-2.5 rounded-xl ${active ? 'bg-white text-neutral-900' : 'glass-cell text-white/35'}`}>
+            {TRAVEL.map(({ key, Icon }) => (
+              <button key={key} onClick={() => setTravelMode(key)}
+                className={`flex items-center justify-center py-2.5 rounded-xl transition-colors ${travelMode === key ? 'bg-white text-neutral-900' : 'glass-cell text-white/45 hover:text-white/70'}`}>
                 <Icon size={18} />
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -174,15 +177,15 @@ export default function RoutePage() {
         </div>
 
         {/* 距離 / 預估時間 */}
-        {dest && walkMin != null && (
+        {dest && estMin != null && (
           <div className="glass-cell rounded-2xl p-4 flex gap-6">
             <div>
               <p className="text-[11px] text-white/45 mb-0.5">{t('route.routeDist')}</p>
               <p className="num text-white text-2xl">{distKm ?? '—'}<span className="text-sm font-normal text-white/45 ml-1">km</span></p>
             </div>
             <div>
-              <p className="text-[11px] text-white/45 mb-0.5">{t('route.walkTime')}</p>
-              <p className="num text-white text-2xl">{walkMin}<span className="text-sm font-normal text-white/45 ml-1">{t('common.min')}</span></p>
+              <p className="text-[11px] text-white/45 mb-0.5">{t('route.travelTime', { mode: modeLabel })}</p>
+              <p className="num text-white text-2xl">{estMin}<span className="text-sm font-normal text-white/45 ml-1">{t('common.min')}</span></p>
             </div>
             <div className="ml-auto self-center">
               {dest && destStatus && <StatusBadge status={destStatus} />}
@@ -202,7 +205,7 @@ export default function RoutePage() {
               ) : (
                 <span className="text-status-caution">{routeError ?? t('route.straightEst')}</span>
               )}
-              <a href={googleMapsDirUrl(userLoc, { lat: dest.lat, lng: dest.lng })} target="_blank" rel="noopener noreferrer"
+              <a href={googleMapsDirUrl(userLoc, { lat: dest.lat, lng: dest.lng }, travelMode)} target="_blank" rel="noopener noreferrer"
                 className="flex items-center gap-1 text-white font-semibold shrink-0">{t('route.googleNav')} <ExternalLink size={12} /></a>
             </div>
           </div>
@@ -211,7 +214,7 @@ export default function RoutePage() {
         {/* 步行指引 */}
         {route && route.steps.length > 0 && (
           <div className="glass-cell rounded-2xl p-4">
-            <p className="text-xs text-white/45 uppercase tracking-wider mb-3">{t('route.walkGuide')}</p>
+            <p className="text-xs text-white/45 uppercase tracking-wider mb-3">{t('route.travelGuide', { mode: modeLabel })}</p>
             <ol className="space-y-2.5">
               {route.steps.map((step, i) => (
                 <li key={i} className="flex items-start gap-3">
@@ -229,14 +232,14 @@ export default function RoutePage() {
         )}
 
         {/* 抵達時預測 */}
-        {dest && walkMin != null && (() => {
+        {dest && estMin != null && (() => {
           const satMins = minutesToSaturation(dest, getSurgeRate(dest.shelter_id))
           const arrColor = arrivalStatus === 'danger' ? 'text-status-danger' : arrivalStatus === 'caution' ? 'text-status-caution' : 'text-status-safe'
           return (
             <div className="glass-cell rounded-2xl p-4">
               <p className="text-xs text-white/45 uppercase tracking-wider mb-2">{t('route.arrivalPredict')}</p>
               <p className="text-sm text-white/85 mb-2">
-                {t('route.arrivalCapacity', { n: walkMin })}<span className={`num ${arrColor}`}> {arrivalOcc}%</span>
+                {t('route.arrivalCapacity', { mode: modeLabel, n: estMin })}<span className={`num ${arrColor}`}> {arrivalOcc}%</span>
               </p>
               {satMins === null && <p className="text-xs text-status-danger font-semibold">{t('route.saturated')}</p>}
               {satMins !== null && satMins !== Infinity && (
@@ -246,7 +249,7 @@ export default function RoutePage() {
                     <span className="text-status-caution num">{t('route.afterMin', { n: satMins })}</span>
                   </div>
                   <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                    <div className="h-full bg-status-caution rounded-full" style={{ width: `${Math.min(100, (walkMin) / satMins * 100)}%` }} />
+                    <div className="h-full bg-status-caution rounded-full" style={{ width: `${Math.min(100, (estMin) / satMins * 100)}%` }} />
                   </div>
                 </div>
               )}

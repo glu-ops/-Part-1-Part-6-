@@ -97,14 +97,34 @@ const MODIFIER_LABEL: Record<string, string> = {
   uturn: '迴轉',
 }
 
+export type TravelMode = 'walk' | 'bike' | 'transit' | 'car'
+
+const OSRM_PROFILE: Record<TravelMode, string> = {
+  walk: 'walking',
+  bike: 'cycling',
+  transit: 'driving',
+  car: 'driving',
+}
+
 /** 以 OSRM 公共服務取得步行路線（含轉彎指示） */
 export async function getWalkingRoute(
   from: LatLng,
   to: LatLng,
   signal?: AbortSignal,
 ): Promise<RouteResult> {
+  return getRoute(from, to, 'walk', signal)
+}
+
+/** 以 OSRM 取得指定交通方式的路線 */
+export async function getRoute(
+  from: LatLng,
+  to: LatLng,
+  mode: TravelMode = 'walk',
+  signal?: AbortSignal,
+): Promise<RouteResult> {
+  const profile = OSRM_PROFILE[mode]
   const url =
-    'https://router.project-osrm.org/route/v1/walking/' +
+    `https://router.project-osrm.org/route/v1/${profile}/` +
     `${from.lng},${from.lat};${to.lng},${to.lat}` +
     '?overview=full&geometries=geojson&steps=true'
 
@@ -140,20 +160,32 @@ export async function getWalkingRoute(
     }
   }
 
+  let duration = route.duration
+  if (mode === 'transit') {
+    duration = route.duration * 1.4
+  }
+
   return {
     coordinates,
     distance: route.distance,
-    duration: route.duration,
+    duration,
     steps,
   }
 }
 
-/** 產生外部 Google 地圖步行導航連結 */
-export function googleMapsDirUrl(from: LatLng, to: LatLng): string {
+const GOOGLE_TRAVEL_MODE: Record<TravelMode, string> = {
+  walk: 'walking',
+  bike: 'bicycling',
+  transit: 'transit',
+  car: 'driving',
+}
+
+/** 產生外部 Google 地圖導航連結 */
+export function googleMapsDirUrl(from: LatLng, to: LatLng, mode: TravelMode = 'walk'): string {
   return (
     'https://www.google.com/maps/dir/?api=1' +
     `&origin=${from.lat},${from.lng}` +
     `&destination=${to.lat},${to.lng}` +
-    '&travelmode=walking'
+    `&travelmode=${GOOGLE_TRAVEL_MODE[mode]}`
   )
 }
