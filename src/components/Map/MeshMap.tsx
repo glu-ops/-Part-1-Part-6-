@@ -48,7 +48,8 @@ function hexToRgb(hex: string): string {
   return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`
 }
 function sosIcon(priority: SosPriority): L.DivIcon {
-  const c = PRIORITY_COLOR[priority]
+  // 防呆：舊資料的 priority 可能缺漏或非法，退回 medium 色避免整頁崩潰
+  const c = PRIORITY_COLOR[priority] ?? PRIORITY_COLOR.medium
   const rgb = hexToRgb(c)
   return L.divIcon({
     className: '',
