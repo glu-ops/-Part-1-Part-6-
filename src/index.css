@@ -149,6 +149,19 @@
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
+/* 細捲軸 — 深色玻璃風格（取代瀏覽器預設灰色寬捲軸） */
+.thin-scrollbar { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.18) transparent; }
+.thin-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
+.thin-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.28); }
+
+/* Leaflet popup 內捲動區也套用細捲軸（回報串 / SOS 詳情） */
+.leaflet-popup-content .thin-scrollbar::-webkit-scrollbar { width: 5px; }
+
 /* 表單元素配色（深色下拉、輸入） */
 select option { background: #1c1e23; color: #f1f2f4; }
 input[type='range'] { accent-color: #e5e7eb; }

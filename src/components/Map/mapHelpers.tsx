@@ -25,12 +25,28 @@ export function ClickCapture({ onPick }: { onPick: (loc: LatLng) => void }) {
   return null
 }
 
-/** 自動修正容器尺寸（避免地圖在隱藏後尺寸錯亂） */
+/** 自動修正容器尺寸（手機/iPad 在 flex/RWD 版面下容器尺寸常較晚定，
+ *  造成地圖灰屏或 marker 看不到）。多次延遲 + 視窗縮放 + 容器尺寸監看，確保重繪。 */
 export function InvalidateOnMount() {
   const map = useMap()
   useEffect(() => {
-    const t = setTimeout(() => map.invalidateSize(), 200)
-    return () => clearTimeout(t)
+    const fix = () => map.invalidateSize()
+    const timers = [0, 200, 500, 1000].map(d => setTimeout(fix, d))
+    window.addEventListener('resize', fix)
+    window.addEventListener('orientationchange', fix)
+    let ro: ResizeObserver | undefined
+    try {
+      if ('ResizeObserver' in window) {
+        ro = new ResizeObserver(() => fix())
+        ro.observe(map.getContainer())
+      }
+    } catch { /* ignore */ }
+    return () => {
+      timers.forEach(clearTimeout)
+      window.removeEventListener('resize', fix)
+      window.removeEventListener('orientationchange', fix)
+      ro?.disconnect()
+    }
   }, [map])
   return null
 }

@@ -1,8 +1,9 @@
 import { useNavigate } from 'react-router-dom'
-import { MapPin, Clock, Users, Droplets, Utensils, Heart, Zap, ChevronRight } from 'lucide-react'
+import { MapPin, Clock, Users, Droplets, Utensils, Heart, Zap, ChevronRight, AlertOctagon } from 'lucide-react'
 import type { Shelter, OverallStatus } from '../../types'
 import StatusBadge from './StatusBadge'
 import { useI18n } from '../../i18n'
+import { useMesh } from '../../contexts/MeshContext'
 
 interface Props {
   shelter: Shelter
@@ -19,6 +20,7 @@ const resColor = { green: 'text-status-safe', yellow: 'text-status-caution', red
 export default function ShelterCard({ shelter: s, status, distanceM, walkMin, compact = false }: Props) {
   const nav = useNavigate()
   const { t, rt } = useI18n()
+  const { openSosComposer } = useMesh()
   const occ = Math.round((s.capacity.current_estimate / s.capacity.physical) * 100)
   const occColor = occ > 90 ? 'text-status-danger' : occ > 70 ? 'text-status-caution' : 'text-status-safe'
   const occBar   = occ > 90 ? 'bg-status-danger' : occ > 70 ? 'bg-status-caution' : 'bg-status-safe'
@@ -83,7 +85,18 @@ export default function ShelterCard({ shelter: s, status, distanceM, walkMin, co
         </div>
       )}
 
-      <p className="text-[10px] text-white/40 mt-3">{t('home.lastUpdated', { time: rt(s.last_updated), n: s.report_count })}</p>
+      <div className="flex items-center justify-between mt-3 gap-2">
+        <p className="text-[10px] text-white/40 flex-1 min-w-0 truncate">{t('home.lastUpdated', { time: rt(s.last_updated), n: s.report_count })}</p>
+        <button
+          onClick={e => {
+            e.stopPropagation()
+            openSosComposer({ category: 'shelterHelp', scope: 'commandCenter', shelter: { id: s.shelter_id, name: s.name, location: s.address } })
+          }}
+          className="shrink-0 text-[10px] font-semibold text-status-danger glass-cell rounded-full px-2.5 py-1 flex items-center gap-1 active:scale-95 transition-transform"
+        >
+          <AlertOctagon size={11} />{t('sos.shelterHelpCta')}
+        </button>
+      </div>
     </div>
   )
 }
