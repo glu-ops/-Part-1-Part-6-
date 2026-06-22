@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { CheckCircle, MapPin, LocateFixed, Loader2, ImagePlus, X } from 'lucide-react'
+import { CheckCircle, MapPin, LocateFixed, Loader2, ImagePlus, X, Sparkles } from 'lucide-react'
 import { useShelters, getClientId } from '../contexts/ShelterContext'
 import { useUser } from '../contexts/UserContext'
 import { useMesh } from '../contexts/MeshContext'
@@ -10,6 +10,7 @@ import { useIsDesktop } from '../hooks'
 import LocationPicker from '../components/Map/LocationPicker'
 import ReportThreadCard from '../components/Report/ReportThreadCard'
 import { filesToAttachments } from '../utils/image'
+import { analyzeImage, isVisionEnabled } from '../utils/vision'
 import type { CrowdReport, ReportType, ResourceStatus, Attachment } from '../types'
 
 const TYPES: { value: ReportType; key: string }[] = [
@@ -48,6 +49,8 @@ export default function ReportPage() {
   const [files, setFiles] = useState<Attachment[]>([])
   const [done, setDone] = useState(false)
   const [saveWarning, setSaveWarning] = useState(false)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [aiApplied, setAiApplied] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const locTouched = useRef(false)
 
@@ -66,9 +69,24 @@ export default function ReportPage() {
 
   async function addFiles(list: FileList | null) {
     if (!list) return
-    // 圖片壓縮 / 影片 / 檔案 → data URL（可持久化 + 可透過 Mesh 傳遞）
     const { attachments } = await filesToAttachments(list)
     setFiles(prev => [...prev, ...attachments])
+
+    const firstImage = attachments.find(a => a.kind === 'image')
+    if (firstImage && isVisionEnabled()) {
+      setAnalyzing(true)
+      try {
+        const result = await analyzeImage(firstImage.url)
+        setType(result.type)
+        setSeverity(result.severity)
+        if (result.note) setNote(result.note)
+        setAiApplied(true)
+      } catch {
+        // API failure — user fills form manually
+      } finally {
+        setAnalyzing(false)
+      }
+    }
   }
 
   function submit() {
@@ -114,12 +132,53 @@ export default function ReportPage() {
           </div>
         )}
 
+        {/* 附件上傳（放在最前面，讓 AI 辨識結果自動填入下方欄位） */}
+        <div className="glass-cell rounded-2xl p-4">
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs text-white/45">{t('report.attachments')}</label>
+            {isVisionEnabled() && (
+              <span className="flex items-center gap-1 text-[10px] text-white/35">
+                <Sparkles size={10} />{t('report.aiHint')}
+              </span>
+            )}
+          </div>
+          <button onClick={() => fileRef.current?.click()} disabled={analyzing}
+            className="w-full border border-dashed border-white/25 rounded-xl py-5 flex flex-col items-center gap-1.5 text-white/45 hover:text-white/70 hover:border-white/40 transition-colors disabled:opacity-50">
+            {analyzing
+              ? <><Loader2 size={20} className="animate-spin text-white/70" /><span className="text-[11px] text-white/70">{t('report.aiAnalyzing')}</span></>
+              : <><ImagePlus size={20} /><span className="text-[11px]">{t('report.dropHint')}</span></>}
+          </button>
+          <input ref={fileRef} type="file" accept="image/*,video/*,*/*" multiple className="hidden" onChange={e => { addFiles(e.target.files); e.target.value = '' }} />
+          {files.length > 0 && (
+            <div className="grid grid-cols-4 gap-2 mt-2">
+              {files.map((f, i) => (
+                <div key={i} className="relative aspect-square rounded-lg overflow-hidden glass-cell flex items-center justify-center">
+                  {f.kind === 'image'
+                    ? <img src={f.url} alt={f.name} className="w-full h-full object-cover" />
+                    : f.kind === 'video'
+                      ? <video src={f.url} className="w-full h-full object-cover bg-black" />
+                      : <span className="text-[9px] text-white/60 px-1 text-center break-all">📎 {f.name.slice(0, 12)}</span>}
+                  <button onClick={() => setFiles(prev => prev.filter((_, j) => j !== i))}
+                    className="absolute top-0.5 right-0.5 bg-black/60 rounded-full p-0.5 text-white/80">
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {aiApplied && (
+            <div className="flex items-center gap-1.5 mt-2 text-[11px] text-status-safe">
+              <Sparkles size={11} />{t('report.aiDone')}
+            </div>
+          )}
+        </div>
+
         {/* Type */}
         <div className="glass-cell rounded-2xl p-4">
           <label className="text-xs text-white/45 block mb-3">{t('report.type')}</label>
           <div className="grid grid-cols-2 gap-2">
             {TYPES.map(ty => (
-              <button key={ty.value} onClick={() => setType(ty.value)}
+              <button key={ty.value} onClick={() => { setType(ty.value); setAiApplied(false) }}
                 className={`py-2.5 rounded-xl text-sm font-medium transition-colors ${type === ty.value ? 'bg-white text-neutral-900' : 'glass-cell text-white/65'}`}>
                 {t(ty.key)}
               </button>
@@ -142,7 +201,7 @@ export default function ReportPage() {
           <label className="text-xs text-white/45 block mb-3">{t('report.severity')}</label>
           <div className="flex gap-2">
             {SEV.map(s => (
-              <button key={s.value} onClick={() => setSeverity(s.value)}
+              <button key={s.value} onClick={() => { setSeverity(s.value); setAiApplied(false) }}
                 className={`flex-1 py-2.5 rounded-xl text-sm font-bold border-2 transition-colors ${severity === s.value ? s.cls + ' bg-white/5' : 'border-white/10 text-white/40'}`}>
                 {t(s.key)}
               </button>
@@ -153,7 +212,6 @@ export default function ReportPage() {
         {/* 回報位置 */}
         <div className="glass-cell rounded-2xl p-4">
           {selectedShelter ? (
-            // 針對避難所回報：直接使用該避難所正確座標，免手動選位置
             <>
               <label className="text-xs text-white/45 flex items-center gap-1.5 mb-2">
                 <MapPin size={13} className="text-white/60" />{t('report.shelterLocation')}
@@ -178,7 +236,6 @@ export default function ReportPage() {
                   {locating ? <Loader2 size={12} className="animate-spin" /> : <LocateFixed size={12} />}{t('report.locate')}
                 </button>
               </div>
-              {/* 行動版：內嵌選點地圖 */}
               {!isDesktop && (
                 <LocationPicker value={loc} onChange={setPickedLoc} />
               )}
@@ -192,34 +249,6 @@ export default function ReportPage() {
           <label className="text-xs text-white/45 block mb-2">{t('report.note')}</label>
           <textarea value={note} onChange={e => setNote(e.target.value)} placeholder={t('report.notePlaceholder')} rows={3}
             className="w-full glass-cell text-white text-sm rounded-xl px-3 py-2.5 outline-none resize-none placeholder-white/35" />
-        </div>
-
-        {/* 附件上傳 */}
-        <div className="glass-cell rounded-2xl p-4">
-          <label className="text-xs text-white/45 block mb-2">{t('report.attachments')}</label>
-          <button onClick={() => fileRef.current?.click()}
-            className="w-full border border-dashed border-white/25 rounded-xl py-5 flex flex-col items-center gap-1.5 text-white/45 hover:text-white/70 hover:border-white/40 transition-colors">
-            <ImagePlus size={20} />
-            <span className="text-[11px]">{t('report.dropHint')}</span>
-          </button>
-          <input ref={fileRef} type="file" accept="image/*,video/*,*/*" multiple className="hidden" onChange={e => { addFiles(e.target.files); e.target.value = '' }} />
-          {files.length > 0 && (
-            <div className="grid grid-cols-4 gap-2 mt-2">
-              {files.map((f, i) => (
-                <div key={i} className="relative aspect-square rounded-lg overflow-hidden glass-cell flex items-center justify-center">
-                  {f.kind === 'image'
-                    ? <img src={f.url} alt={f.name} className="w-full h-full object-cover" />
-                    : f.kind === 'video'
-                      ? <video src={f.url} className="w-full h-full object-cover bg-black" />
-                      : <span className="text-[9px] text-white/60 px-1 text-center break-all">📎 {f.name.slice(0, 12)}</span>}
-                  <button onClick={() => setFiles(prev => prev.filter((_, j) => j !== i))}
-                    className="absolute top-0.5 right-0.5 bg-black/60 rounded-full p-0.5 text-white/80">
-                    <X size={12} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
 
         {/* 最近回報（同地點多人補充合併為一串） */}
