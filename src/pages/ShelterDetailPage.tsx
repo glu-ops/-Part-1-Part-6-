@@ -3,10 +3,11 @@ import {
   ArrowLeft, MapPin, Clock, Droplets,
   Utensils, Heart, Zap, Navigation, AlertTriangle,
   ShieldCheck, ShieldAlert, ShieldQuestion, ShieldOff,
-  MessageCircle,
+  MessageCircle, AlertOctagon,
 } from 'lucide-react'
 import { useShelters } from '../contexts/ShelterContext'
 import { useUser } from '../contexts/UserContext'
+import { useMesh } from '../contexts/MeshContext'
 import { useI18n } from '../i18n'
 import {
   getOverallStatus, calcScore,
@@ -51,6 +52,7 @@ export default function ShelterDetailPage() {
   const nav = useNavigate()
   const { shelters, reports } = useShelters()
   const { disaster, userLoc } = useUser()
+  const { openSosComposer } = useMesh()
   const { t, rt } = useI18n()
 
   const s = shelters.find(x => x.shelter_id === id)
@@ -303,10 +305,25 @@ export default function ShelterDetailPage() {
       </div>
 
       {/* 底部 CTA */}
-      <div className="fixed bottom-16 inset-x-0 px-4 pb-2 pt-6 bg-gradient-to-t from-[#1d1e22] via-[#1d1e22]/80 to-transparent max-w-2xl mx-auto">
+      <div className="fixed bottom-16 inset-x-0 px-4 pb-2 pt-6 bg-gradient-to-t from-[#1d1e22] via-[#1d1e22]/80 to-transparent max-w-2xl mx-auto flex gap-2">
+        <button
+          onClick={() => openSosComposer({ category: 'shelterHelp', scope: 'commandCenter', shelter: { id: s.shelter_id, name: s.name, location: s.address } })}
+          className="glass-cell text-status-danger font-semibold rounded-full py-3.5 px-4 flex items-center justify-center gap-1.5 active:scale-[.98] transition-all shrink-0"
+          aria-label={t('sos.shelterHelpCta')}
+        >
+          <AlertOctagon size={18} />
+          {t('sos.shelterHelpCta')}
+        </button>
+        <button
+          onClick={() => nav(`/report?shelter=${s.shelter_id}`)}
+          className="glass-cell text-white font-semibold rounded-full py-3.5 px-4 flex items-center justify-center gap-2 active:scale-[.98] transition-all shrink-0"
+        >
+          <MessageCircle size={18} />
+          {t('detail.reportHere')}
+        </button>
         <button
           onClick={() => nav(`/route?dest=${s.shelter_id}`)}
-          className="w-full bg-white text-neutral-900 font-bold rounded-full py-3.5 flex items-center justify-center gap-2 hover:bg-white/90 active:scale-[.98] transition-all"
+          className="flex-1 bg-white text-neutral-900 font-bold rounded-full py-3.5 flex items-center justify-center gap-2 hover:bg-white/90 active:scale-[.98] transition-all"
         >
           <Navigation size={18} />
           {t('detail.planRouteHere')}

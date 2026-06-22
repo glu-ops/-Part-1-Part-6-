@@ -1,14 +1,16 @@
 import { useEffect, useState, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { CheckCircle, MapPin, LocateFixed, Loader2, ImagePlus, X } from 'lucide-react'
 import { useShelters, getClientId } from '../contexts/ShelterContext'
 import { useUser } from '../contexts/UserContext'
 import { useMesh } from '../contexts/MeshContext'
+import { useIdentity } from '../contexts/IdentityContext'
 import { useI18n } from '../i18n'
 import { useIsDesktop } from '../hooks'
 import LocationPicker from '../components/Map/LocationPicker'
-import ReportCard from '../components/Report/ReportCard'
-import { downscaleImage } from '../utils/image'
-import type { CrowdReport, ReportType, ResourceStatus } from '../types'
+import ReportThreadCard from '../components/Report/ReportThreadCard'
+import { filesToAttachments } from '../utils/image'
+import type { CrowdReport, ReportType, ResourceStatus, Attachment } from '../types'
 
 const TYPES: { value: ReportType; key: string }[] = [
   { value: 'crowd', key: 'report.type.crowd' },
@@ -28,22 +30,30 @@ function makeReportId(clientId: string): string {
 }
 
 export default function ReportPage() {
-  const { shelters, addReport, activeReports, voteReport } = useShelters()
+  const { shelters, addReport, reportThreads, voteReport } = useShelters()
   const { userLoc, locateMe, locating } = useUser()
   const { shareReport } = useMesh()
+  const { name } = useIdentity()
   const { t } = useI18n()
   const isDesktop = useIsDesktop()
   const cid = getClientId()
+  // 從避難所卡片進入：/report?shelter=<id> → 預選該避難所、用其正確座標
+  const [searchParams] = useSearchParams()
+  const shelterParam = searchParams.get('shelter') ?? ''
   const [type, setType] = useState<ReportType>('crowd')
   const [severity, setSeverity] = useState<ResourceStatus>('green')
-  const [shelterId, setShelterId] = useState('')
+  const [shelterId, setShelterId] = useState(shelterParam)
   const [note, setNote] = useState('')
   const [loc, setLoc] = useState(userLoc)
-  const [files, setFiles] = useState<{ url: string; name: string }[]>([])
+  const [files, setFiles] = useState<Attachment[]>([])
   const [done, setDone] = useState(false)
   const [saveWarning, setSaveWarning] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const locTouched = useRef(false)
+
+  // 選定避難所時，回報位置一律採用避難所正確座標（不被手動位置覆蓋）
+  const selectedShelter = shelters.find(s => s.shelter_id === shelterId)
+  const reportLoc = selectedShelter ? { lat: selectedShelter.lat, lng: selectedShelter.lng } : loc
 
   useEffect(() => {
     if (!locTouched.current) setLoc(userLoc)
@@ -56,24 +66,26 @@ export default function ReportPage() {
 
   async function addFiles(list: FileList | null) {
     if (!list) return
-    // 壓縮成 base64（可持久化 + 可透過 Mesh 傳遞）
-    const next = await Promise.all(
-      Array.from(list).map(async f => ({ url: await downscaleImage(f), name: f.name })),
-    )
-    setFiles(prev => [...prev, ...next])
+    // 圖片壓縮 / 影片 / 檔案 → data URL（可持久化 + 可透過 Mesh 傳遞）
+    const { attachments } = await filesToAttachments(list)
+    setFiles(prev => [...prev, ...attachments])
   }
 
   function submit() {
+    const id = makeReportId(cid)
     const r: CrowdReport = {
-      id: makeReportId(cid),
+      id,
       shelter_id: shelterId || null,
       type, severity, note,
       reported_at: new Date().toISOString(),
-      lat: loc.lat, lng: loc.lng,
-      photos: files.map(f => f.url),
+      lat: reportLoc.lat, lng: reportLoc.lng,   // 選避難所時用其座標，否則用手動位置
+      photos: [],
+      attachments: files,
       upVoters: [], downVoters: [],
       status: 'active',
       author: cid,
+      authorName: name || undefined,
+      threadId: id,   // 自成一串；之後可被「補充回報」沿用
       version: 1,
     }
     const saved = addReport(r)
@@ -83,7 +95,7 @@ export default function ReportPage() {
     setTimeout(() => { setDone(false); setSaveWarning(false); setNote(''); setFiles([]) }, 3000)
   }
 
-  const recent = activeReports.slice().reverse().slice(0, 6)
+  const recentThreads = reportThreads.filter(th => th.status !== 'resolved').slice(0, 6)
   const onVote = (id: string, dir: 'up' | 'down') => { const u = voteReport(id, dir, cid); if (u) shareReport(u) }
 
   const panel = (
@@ -140,20 +152,39 @@ export default function ReportPage() {
 
         {/* 回報位置 */}
         <div className="glass-cell rounded-2xl p-4">
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-xs text-white/45 flex items-center gap-1.5">
-              <MapPin size={13} className="text-white/60" />{t('report.location')}
-            </label>
-            <button onClick={() => { locateMe().then(setPickedLoc).catch(() => {}) }}
-              className="flex items-center gap-1 text-[11px] text-white glass-cell rounded-full px-2.5 py-1 shrink-0">
-              {locating ? <Loader2 size={12} className="animate-spin" /> : <LocateFixed size={12} />}{t('report.locate')}
-            </button>
-          </div>
-          {/* 行動版：內嵌選點地圖 */}
-          {!isDesktop && (
-            <LocationPicker value={loc} onChange={setPickedLoc} />
+          {selectedShelter ? (
+            // 針對避難所回報：直接使用該避難所正確座標，免手動選位置
+            <>
+              <label className="text-xs text-white/45 flex items-center gap-1.5 mb-2">
+                <MapPin size={13} className="text-white/60" />{t('report.shelterLocation')}
+              </label>
+              <div className="flex items-center gap-2 glass-cell rounded-xl px-3 py-2.5">
+                <MapPin size={15} className="text-status-safe shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-sm text-white font-medium truncate">{selectedShelter.name}</p>
+                  <p className="text-[11px] text-white/45 num">{reportLoc.lat.toFixed(5)}, {reportLoc.lng.toFixed(5)}</p>
+                </div>
+              </div>
+              <p className="text-[10px] text-white/40 mt-1.5">{t('report.shelterLocHint')}</p>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs text-white/45 flex items-center gap-1.5">
+                  <MapPin size={13} className="text-white/60" />{t('report.location')}
+                </label>
+                <button onClick={() => { locateMe().then(setPickedLoc).catch(() => {}) }}
+                  className="flex items-center gap-1 text-[11px] text-white glass-cell rounded-full px-2.5 py-1 shrink-0">
+                  {locating ? <Loader2 size={12} className="animate-spin" /> : <LocateFixed size={12} />}{t('report.locate')}
+                </button>
+              </div>
+              {/* 行動版：內嵌選點地圖 */}
+              {!isDesktop && (
+                <LocationPicker value={loc} onChange={setPickedLoc} />
+              )}
+              <p className="text-[11px] text-white/45 mt-2 num">{t('report.coords', { lat: loc.lat.toFixed(5), lng: loc.lng.toFixed(5) })}</p>
+            </>
           )}
-          <p className="text-[11px] text-white/45 mt-2 num">{t('report.coords', { lat: loc.lat.toFixed(5), lng: loc.lng.toFixed(5) })}</p>
         </div>
 
         {/* Note */}
@@ -171,12 +202,16 @@ export default function ReportPage() {
             <ImagePlus size={20} />
             <span className="text-[11px]">{t('report.dropHint')}</span>
           </button>
-          <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={e => addFiles(e.target.files)} />
+          <input ref={fileRef} type="file" accept="image/*,video/*,*/*" multiple className="hidden" onChange={e => { addFiles(e.target.files); e.target.value = '' }} />
           {files.length > 0 && (
             <div className="grid grid-cols-4 gap-2 mt-2">
               {files.map((f, i) => (
-                <div key={i} className="relative aspect-square rounded-lg overflow-hidden glass-cell">
-                  <img src={f.url} alt={f.name} className="w-full h-full object-cover" />
+                <div key={i} className="relative aspect-square rounded-lg overflow-hidden glass-cell flex items-center justify-center">
+                  {f.kind === 'image'
+                    ? <img src={f.url} alt={f.name} className="w-full h-full object-cover" />
+                    : f.kind === 'video'
+                      ? <video src={f.url} className="w-full h-full object-cover bg-black" />
+                      : <span className="text-[9px] text-white/60 px-1 text-center break-all">📎 {f.name.slice(0, 12)}</span>}
                   <button onClick={() => setFiles(prev => prev.filter((_, j) => j !== i))}
                     className="absolute top-0.5 right-0.5 bg-black/60 rounded-full p-0.5 text-white/80">
                     <X size={12} />
@@ -187,14 +222,14 @@ export default function ReportPage() {
           )}
         </div>
 
-        {/* 最近回報 */}
-        {recent.length > 0 && (
+        {/* 最近回報（同地點多人補充合併為一串） */}
+        {recentThreads.length > 0 && (
           <div className="glass-cell rounded-2xl p-4">
             <p className="text-xs text-white/45 uppercase tracking-wider mb-3">{t('report.recent')}</p>
             <div className="space-y-2">
-              {recent.map(r => (
-                <div key={r.id} className="glass-cell rounded-xl p-3">
-                  <ReportCard report={r} clientId={cid} onVote={dir => onVote(r.id, dir)} />
+              {recentThreads.map(th => (
+                <div key={th.threadId} className="glass-cell rounded-xl p-3">
+                  <ReportThreadCard thread={th} clientId={cid} onVote={onVote} />
                 </div>
               ))}
             </div>
@@ -213,10 +248,11 @@ export default function ReportPage() {
 
   return (
     <div className="lg:fixed lg:inset-0">
-      {/* 桌面：右側全幅地圖（可點選回報位置 + 顯示避難所/回報/災害範圍） */}
+      {/* 桌面：右側全幅地圖（可點選回報位置 + 顯示避難所/回報/災害範圍）。
+          選定避難所時定位該所、停用手動改點（座標以避難所為準）。 */}
       {isDesktop && (
         <div className="absolute inset-0">
-          <LocationPicker value={loc} onChange={setPickedLoc} className="w-full h-full" showContext />
+          <LocationPicker value={reportLoc} onChange={selectedShelter ? () => {} : setPickedLoc} className="w-full h-full" showContext />
         </div>
       )}
 

@@ -1,3 +1,39 @@
+import type { Attachment } from '../types'
+
+// 非圖片附件（影片 / 檔案）大小上限：避免 data URL 撐爆 localStorage 配額
+const MAX_FILE_BYTES = 8 * 1024 * 1024  // 8MB
+
+function readAsDataUrl(file: File): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const fr = new FileReader()
+    fr.onload = () => resolve(fr.result as string)
+    fr.onerror = reject
+    fr.readAsDataURL(file)
+  })
+}
+
+/**
+ * 將上傳檔案轉成可持久化 / 可經 Mesh 傳遞的附件：
+ * - 圖片：壓縮成小 JPEG
+ * - 影片 / 其他：data URL（超過上限則略過並回報）
+ * 回傳 { attachments, skipped }（skipped = 因過大被略過的檔名）
+ */
+export async function filesToAttachments(list: FileList | File[]): Promise<{ attachments: Attachment[]; skipped: string[] }> {
+  const attachments: Attachment[] = []
+  const skipped: string[] = []
+  for (const file of Array.from(list)) {
+    if (file.type.startsWith('image/')) {
+      attachments.push({ name: file.name, kind: 'image', url: await downscaleImage(file), size: file.size })
+    } else if (file.size > MAX_FILE_BYTES) {
+      skipped.push(file.name)
+    } else {
+      const kind: Attachment['kind'] = file.type.startsWith('video/') ? 'video' : 'file'
+      attachments.push({ name: file.name, kind, url: await readAsDataUrl(file), size: file.size })
+    }
+  }
+  return { attachments, skipped }
+}
+
 // 將上傳圖片壓縮成較小的 base64 JPEG：
 // 1) 可持久化到 localStorage（blob URL 重整後失效）
 // 2) 夠小可透過 Mesh P2P 傳遞給其他節點

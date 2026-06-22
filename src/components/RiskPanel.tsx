@@ -16,7 +16,7 @@ export default function RiskPanel() {
   const alert = risks.filter(r => r.level === 'high' || r.level === 'danger').length
 
   return (
-    <div className="absolute z-[600] top-28 left-1/2 -translate-x-1/2 lg:top-32 w-[300px] max-w-[calc(100vw-1.5rem)]">
+    <div className="w-full">
       <button onClick={() => setOpen(o => !o)}
         className="w-full glass rounded-2xl px-3 py-2 flex items-center gap-2 text-sm text-white">
         <ShieldAlert size={15} className="text-white/80" />
