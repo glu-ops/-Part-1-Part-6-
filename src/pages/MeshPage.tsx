@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Radio, Copy, Send, AlertOctagon, Wifi, WifiOff, ShieldCheck, Home, HelpCircle, X, MapPin, Users, Megaphone, UserCircle2 } from 'lucide-react'
+import { Radio, Copy, Send, AlertOctagon, Wifi, WifiOff, ShieldCheck, Home, HelpCircle, X, MapPin, UserCircle2, Plus } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { useUser } from '../contexts/UserContext'
 import { useShelters } from '../contexts/ShelterContext'
@@ -10,7 +10,13 @@ import type { MeshMessage, PeerInfo } from '../hooks/usePeerMesh'
 import MeshMap from '../components/Map/MeshMap'
 import type { MeshPeerView } from '../components/Map/MeshMap'
 import SosBoard from '../components/Mesh/SosBoard'
+import { SOS_CATEGORY_META, PRIORITY_COLOR, isSosClosed } from '../sos'
+import type { SosCategory, SosScope } from '../types'
 import { distanceMeters } from '../utils/geo'
+
+// 高優先級「一鍵送出」類型（預設範圍＝指揮中心）
+const ONE_TAP_CATEGORIES: SosCategory[] = ['lifeThreat', 'medical', 'trapped']
+const ONE_TAP_SCOPE: SosScope = 'commandCenter'
 
 const NEARBY_M = 200  // F2.7-G 門檻
 
@@ -54,11 +60,11 @@ export default function MeshPage() {
   const [filter, setFilter]     = useState<string>('all')  // 'all' | 'sos' | 'system' | <peerId>
   const endRef = useRef<HTMLDivElement>(null)
 
-  const { myId, loading, error, peers, messages, connectedCount, connect, sendText, sendQuick, raiseSos, replySos, markSosSafe, sosEvents, sosFlashId } = useMesh()
+  const { myId, loading, error, peers, messages, connectedCount, connect, sendText, sendQuick, raiseSos, replySos, markSosSafe, openSosComposer, sosEvents, sosFlashId } = useMesh()
   const flashId = sosFlashId
   const { target } = useFocus()
   const focusSos = target?.kind === 'sos' ? { id: target.id, nonce: target.nonce } : null
-  const openSosPoints = useMemo(() => sosEvents.filter(e => e.status !== 'resolved' && e.lat != null && e.lng != null), [sosEvents])
+  const openSosPoints = useMemo(() => sosEvents.filter(e => !isSosClosed(e.status) && e.lat != null && e.lng != null), [sosEvents])
 
   // 名稱解析：訊息自帶 senderName 優先，否則查 peers，最後退回短 ID
   const peerNameMap = useMemo(() => {
@@ -207,10 +213,13 @@ export default function MeshPage() {
       <div className="flex items-center gap-2 mb-2">
         <MapPin size={14} className="text-white/60" />
         <p className="text-xs text-white/45 uppercase tracking-wider">{t('mesh.mapTitle')}</p>
-        <span className="ml-auto flex items-center gap-2 text-[10px] text-white/55">
+        <span className="ml-auto flex items-center gap-2 text-[10px] text-white/55 flex-wrap justify-end">
           <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-[#3b82f6] inline-block" />{myName || t('mesh.me')}</span>
           <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-[#f97316] inline-block" />{t('mesh.peer')}</span>
-          <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-white inline-block" style={{ boxShadow: '0 0 5px rgba(255,255,255,.9)' }} />{t('mesh.sosDot')}</span>
+          <span className="text-white/35">|</span>
+          <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full inline-block" style={{ background: PRIORITY_COLOR.high, boxShadow: `0 0 5px ${PRIORITY_COLOR.high}` }} />{t('sos.prio.high')}</span>
+          <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full inline-block" style={{ background: PRIORITY_COLOR.medium, boxShadow: `0 0 5px ${PRIORITY_COLOR.medium}` }} />{t('sos.prio.medium')}</span>
+          <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full inline-block" style={{ background: PRIORITY_COLOR.low, boxShadow: `0 0 5px ${PRIORITY_COLOR.low}` }} />{t('sos.prio.low')}</span>
         </span>
       </div>
       <div className="h-[58vh] min-h-[320px] lg:h-auto lg:flex-1 lg:min-h-[260px]">
@@ -303,31 +312,31 @@ export default function MeshPage() {
           className="bg-white disabled:opacity-30 text-neutral-900 p-3 rounded-full shrink-0"><Send size={18} /></button>
       </div>
 
-      {/* 三層 SOS（使用者擇一發送，建立可追蹤事件） */}
+      {/* SOS：高優先級一鍵送出（預設送指揮中心）＋ 完整發送面板（選類型/範圍/說明） */}
       <div className="mt-3">
         <p className="text-[10px] text-white/40 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
           <AlertOctagon size={11} />{t('mesh.sosTitle')}
         </p>
         <div className="grid grid-cols-3 gap-2">
-          <button onClick={() => raiseSos('A', t('mesh.sosText'))} disabled={connectedCount === 0}
-            className="bg-orange-500 disabled:opacity-30 text-white rounded-2xl py-2.5 flex flex-col items-center gap-0.5 active:scale-95 transition-transform">
-            <Users size={16} />
-            <span className="text-xs font-bold">{t('mesh.sos.private')}</span>
-            <span className="text-[9px] opacity-85">{t('mesh.sos.privateRange')}</span>
-          </button>
-          <button onClick={() => raiseSos('B', t('mesh.sosText'))}
-            className="bg-status-danger text-white rounded-2xl py-2.5 flex flex-col items-center gap-0.5 active:scale-95 transition-transform">
-            <ShieldCheck size={16} />
-            <span className="text-xs font-bold">{t('mesh.sos.command')}</span>
-            <span className="text-[9px] opacity-85">{t('mesh.sos.commandRange')}</span>
-          </button>
-          <button onClick={() => raiseSos('C', t('mesh.sosText'))} disabled={connectedCount === 0}
-            className="bg-purple-600 disabled:opacity-30 text-white rounded-2xl py-2.5 flex flex-col items-center gap-0.5 active:scale-95 transition-transform">
-            <Megaphone size={16} />
-            <span className="text-xs font-bold">{t('mesh.sos.broadcast')}</span>
-            <span className="text-[9px] opacity-85">{t('mesh.sos.broadcastRange')}</span>
-          </button>
+          {ONE_TAP_CATEGORIES.map(cat => {
+            const Icon = SOS_CATEGORY_META[cat].icon
+            return (
+              <button key={cat} onClick={() => raiseSos({ category: cat, scope: ONE_TAP_SCOPE, text: '' })}
+                className="bg-status-danger text-white rounded-2xl px-1 py-2.5 flex flex-col items-center gap-1 active:scale-95 transition-transform">
+                <Icon size={16} />
+                <span className="text-xs font-bold leading-tight text-center">{t(`sos.cat.${cat}`)}</span>
+                <span className="text-[9px] font-medium bg-white/20 rounded-full px-1.5 py-0.5 flex items-center gap-0.5 leading-none">
+                  <Send size={8} />{t('sos.sendTo', { target: t(`sos.scope.${ONE_TAP_SCOPE}`) })}
+                </span>
+              </button>
+            )
+          })}
         </div>
+        <button onClick={() => openSosComposer()}
+          className="w-full mt-2 glass-cell text-white/90 rounded-2xl py-2.5 flex items-center justify-center gap-1.5 active:scale-[.98] transition-transform">
+          <Plus size={15} />
+          <span className="text-xs font-semibold">{t('sos.moreTypes')}</span>
+        </button>
         <p className="text-[10px] text-white/35 mt-1.5">{t('mesh.sosHint')}</p>
       </div>
     </div>

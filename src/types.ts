@@ -10,6 +10,29 @@ export type ReportType = 'crowd' | 'road' | 'resource' | 'disaster'
 export type HandleStatus = 'active' | 'received' | 'handling' | 'resolved'
 export type SosLayer = 'A' | 'B' | 'C'
 
+// ── SOS 擴充（Part 6）：類型、優先級、發送範圍、狀態機 ──
+// SOS 求救類型（8 類，各自帶預設優先級與是否需填說明，詳見 src/sos.ts 的 META）
+export type SosCategory =
+  | 'lifeThreat'   // 生命危險（high，一鍵送出）
+  | 'medical'      // 醫療救助（high，一鍵送出）
+  | 'trapped'      // 被困 / 無法離開（high，一鍵送出）
+  | 'supplies'     // 物資需求（medium，需簡短說明）
+  | 'evacuation'   // 撤離 / 交通協助（medium，需簡短說明）
+  | 'shelterHelp'  // 避難所協助（medium，需簡短說明，可帶避難所資訊）
+  | 'comms'        // 通訊 / 失聯（medium，需簡短說明）
+  | 'other'        // 其他困難（medium，必填說明）
+
+export type SosPriority = 'high' | 'medium' | 'low'
+
+// 發送範圍（語意層）；對應既有 P2P 路由的 SosLayer：private=A / commandCenter=B / broadcast=C
+export type SosScope = 'private' | 'commandCenter' | 'broadcast'
+
+// SOS 狀態機（取代回報用的 HandleStatus；safe 與 resolved 視為「已結案」）
+export type SosStatus = 'new' | 'received' | 'processing' | 'helped' | 'safe' | 'resolved'
+
+// 協助回覆的快捷類型（綁定 sosId，不混入一般聊天）
+export type SosReplyKind = 'willing' | 'enroute' | 'supplies' | 'evacuate' | 'custom'
+
 export interface Shelter {
   shelter_id: string
   name: string
@@ -75,22 +98,31 @@ export interface SosReply {
   fromName: string
   text: string
   ts: number
-  /** 是否為「我願意幫忙」快捷回覆 */
+  /** 是否為「我願意幫忙」快捷回覆（向後相容；新版改用 kind） */
   offerHelp?: boolean
+  /** 快捷回覆類型（願意幫忙 / 正在前往 / 可提供物資 / 可協助撤離 / 自訂） */
+  kind?: SosReplyKind
 }
 
 export interface SosEvent {
   id: string                   // 穩定事件 ID（去重用：同一次求救只顯示一次）
   senderId: string
   senderName: string
-  layer: SosLayer              // A 私人 / B 指揮中心 / C 廣播
+  layer: SosLayer              // 路由層（A 私人 / B 指揮中心 / C 廣播）
+  scope: SosScope              // 發送範圍語意（private / commandCenter / broadcast）
+  category: SosCategory        // 求救類型（8 類）
+  priority: SosPriority        // 優先級（high / medium / low）
   lat?: number
   lng?: number
-  text: string
+  text: string                 // 說明（高優先級可空，其餘需填）
+  // 避難所協助：從避難所卡片發起時自動帶入
+  shelterId?: string
+  shelterName?: string
+  shelterLocation?: string
   ts: number
-  status: HandleStatus         // active→received→handling→resolved
+  status: SosStatus            // new→received→processing→helped→(safe|resolved)
   replies: SosReply[]          // 綁定此 SOS 的協助回覆
   handledBy?: string           // 接手者名稱（指揮中心或熱心民眾）
-  safeBySelf?: boolean         // 求救者本人標記「已安全」（結案的一種，標籤有別於指揮中心已處理）
-  version: number              // Mesh 版本號（演變時遞增）
+  safeBySelf?: boolean         // 求救者本人標記「已安全」（status='safe'）
+  version: number              // Mesh / 後端版本號（演變時遞增）
 }

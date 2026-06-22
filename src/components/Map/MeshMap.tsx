@@ -6,8 +6,9 @@ import { DEFAULT_LOC } from '../../utils/geo'
 import type { LatLng } from '../../utils/geo'
 import { FlyTo, InvalidateOnMount } from './mapHelpers'
 import { useI18n } from '../../i18n'
+import { PRIORITY_COLOR, LAYER_TO_SCOPE } from '../../sos'
 import type { PeerInfo } from '../../hooks/usePeerMesh'
-import type { SosEvent } from '../../types'
+import type { SosEvent, SosPriority } from '../../types'
 
 export interface MeshPeerView extends PeerInfo {
   nearestLabel?: string   // 「距 X 所 N 公尺」
@@ -41,18 +42,26 @@ function peerIcon(flashing: boolean) {
   })
 }
 
-// 白=SOS 位置（脈動光環凸顯求救）
-const sosIcon = L.divIcon({
-  className: '',
-  html: `<div style="position:relative;width:14px;height:14px;">
-    <span class="animate-ping" style="position:absolute;inset:-6px;border-radius:50%;background:rgba(255,255,255,.5);"></span>
-    <div style="position:absolute;inset:0;border-radius:50%;
-      background:#ffffff;border:2px solid rgba(255,255,255,.95);
-      box-shadow:0 0 0 4px rgba(255,255,255,.25), 0 0 12px rgba(255,255,255,.85);"></div>
-  </div>`,
-  iconSize: [14, 14],
-  iconAnchor: [7, 7],
-})
+// SOS 位置（依優先級上色的發光脈動 marker：high 紅 / medium 琥珀 / low 藍）
+function hexToRgb(hex: string): string {
+  const n = parseInt(hex.slice(1), 16)
+  return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`
+}
+function sosIcon(priority: SosPriority): L.DivIcon {
+  const c = PRIORITY_COLOR[priority]
+  const rgb = hexToRgb(c)
+  return L.divIcon({
+    className: '',
+    html: `<div style="position:relative;width:16px;height:16px;">
+      <span class="animate-ping" style="position:absolute;inset:-7px;border-radius:50%;background:rgba(${rgb},.5);"></span>
+      <div style="position:absolute;inset:0;border-radius:50%;
+        background:${c};border:2px solid rgba(255,255,255,.95);
+        box-shadow:0 0 0 4px rgba(${rgb},.3), 0 0 14px rgba(${rgb},.9);"></div>
+    </div>`,
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+  })
+}
 
 interface FocusSos { id: string; nonce: number }
 
@@ -124,19 +133,23 @@ export default function MeshMap({ myPos, peers, flashId, meLabel, noPosLabel, so
           </Marker>
         ))}
 
-        {/* SOS 點位（白色點，點擊看詳情） */}
+        {/* SOS 點位（依優先級上色，點擊看詳情：名字/類型/範圍/優先級/狀態/時間/位置/說明/回覆） */}
         {sosLocated.map(s => (
           <Marker
             key={s.id}
             position={[s.lat!, s.lng!]}
-            icon={sosIcon}
+            icon={sosIcon(s.priority)}
             ref={(m: L.Marker | null) => { if (m) sosRefs.current.set(s.id, m); else sosRefs.current.delete(s.id) }}
           >
             <Popup>
-              <div className="text-xs" style={{ minWidth: 170 }}>
+              <div className="text-xs" style={{ minWidth: 190 }}>
                 <div className="font-bold text-[13px]">🆘 {s.senderName}</div>
-                <div className="text-neutral-500 mt-0.5">{t(`mesh.layer.${s.layer}`)} · {s.safeBySelf ? t('sos.safe') : t(`status.handle.${s.status}`)}</div>
+                <div className="mt-0.5" style={{ color: PRIORITY_COLOR[s.priority], fontWeight: 600 }}>
+                  {t(`sos.cat.${s.category}`)} · {t(`sos.prio.${s.priority}`)}
+                </div>
+                <div className="text-neutral-500 mt-0.5">{t(`sos.scope.${LAYER_TO_SCOPE[s.layer]}`)} · {t(`sos.status.${s.status}`)}</div>
                 <div className="text-neutral-500">{new Date(s.ts).toLocaleTimeString()}</div>
+                {s.shelterName && <div className="mt-1 text-neutral-600">🏠 {s.shelterName}{s.shelterLocation ? `（${s.shelterLocation}）` : ''}</div>}
                 {s.text && <div className="mt-1 text-neutral-700">{s.text}</div>}
                 {s.replies.length > 0 && (
                   <div className="mt-1 border-t border-neutral-200 pt-1">

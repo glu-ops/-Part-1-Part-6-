@@ -4,13 +4,30 @@ import { AlertOctagon, CheckCircle } from 'lucide-react'
 import { usePeerMesh } from '../hooks/usePeerMesh'
 import type { MeshMessage } from '../hooks/usePeerMesh'
 import { useSosStore } from '../hooks/useSosStore'
+import { useSosSync } from '../hooks/useSosSync'
 import { useShelters } from './ShelterContext'
 import { useUser } from './UserContext'
 import { useIdentity } from './IdentityContext'
 import { useI18n } from '../i18n'
-import type { CrowdReport, SosEvent, SosLayer, SosReply, HandleStatus } from '../types'
+import { SOS_CATEGORY_META, SCOPE_TO_LAYER } from '../sos'
+import SosComposer from '../components/Sos/SosComposer'
+import type { CrowdReport, SosEvent, SosReply, SosStatus, SosReplyKind } from '../types'
 
 type MeshApi = ReturnType<typeof usePeerMesh>
+
+/** SOS 發起草稿（類型 + 範圍 + 說明 + 可選避難所資訊） */
+export interface SosDraft {
+  category: import('../types').SosCategory
+  scope: import('../types').SosScope
+  text: string
+  shelter?: { id: string; name: string; location: string }
+}
+/** 開啟發送面板時的預填（避難所卡片發起時帶入類型 / 避難所） */
+export interface SosComposerPrefill {
+  category?: import('../types').SosCategory
+  scope?: import('../types').SosScope
+  shelter?: { id: string; name: string; location: string }
+}
 
 export interface Notice {
   id: string
@@ -34,10 +51,12 @@ interface MeshCtx extends MeshApi {
   sosFlashId: string | null
   // SOS 事件
   sosEvents: SosEvent[]
-  raiseSos: (layer: SosLayer, text: string) => void
-  replySos: (sosId: string, text: string, offerHelp?: boolean) => void
-  setSosStatus: (sosId: string, status: HandleStatus, handledBy?: string) => void
+  raiseSos: (draft: SosDraft) => void
+  replySos: (sosId: string, text: string, kind?: SosReplyKind) => void
+  setSosStatus: (sosId: string, status: SosStatus, handledBy?: string) => void
   markSosSafe: (sosId: string) => void
+  // SOS 發送面板（避難所卡片等處可帶預填開啟）
+  openSosComposer: (prefill?: SosComposerPrefill) => void
   // 通知中心
   notices: Notice[]
   unreadCount: number
@@ -116,8 +135,8 @@ export function MeshProvider({ children }: { children: ReactNode }) {
     const who = merged.senderName || t('notice.someone')
     const latestReply = merged.replies.length ? merged.replies[merged.replies.length - 1] : null
     const base = {
-      reporter: who, typeLabel: t(`mesh.layer.${merged.layer}`),
-      statusLabel: merged.safeBySelf ? t('sos.safe') : t(`status.handle.${merged.status}`),
+      reporter: who, typeLabel: t(`sos.cat.${merged.category}`),
+      statusLabel: t(`sos.status.${merged.status}`),
       latest: latestReply ? `${latestReply.fromName}：${latestReply.text}` : merged.text,
       refKind: 'sos' as const, refId: merged.id, lat: merged.lat, lng: merged.lng,
     }
@@ -126,10 +145,10 @@ export function MeshProvider({ children }: { children: ReactNode }) {
       setSosFlashId(merged.senderId)
       setTimeout(() => setSosFlashId(null), 6000)
       addNotice({ kind: 'sos-new', text: t('notice.sosNew', { who }), ...base })
-    } else if (merged.status === 'resolved' && merged.safeBySelf) {
+    } else if (merged.status === 'safe' && merged.safeBySelf) {
       addNotice({ kind: 'sos-safe', text: t('notice.sosSafe', { who }), ...base })
     } else if (prevStatus && prevStatus !== merged.status) {
-      addNotice({ kind: 'sos-status', text: t('notice.sosStatus', { who, status: t(`status.handle.${merged.status}`) }), ...base })
+      addNotice({ kind: 'sos-status', text: t('notice.sosStatus', { who, status: t(`sos.status.${merged.status}`) }), ...base })
     } else {
       // 狀態未變但有演變 → 視為新回覆（有人願意幫忙等）
       addNotice({ kind: 'sos-reply', text: t('notice.sosReply', { who }), ...base })
@@ -155,46 +174,78 @@ export function MeshProvider({ children }: { children: ReactNode }) {
 
   const mesh = usePeerMesh({ fixedId: myId, myName: name, myPos: userLoc, onSosEvent, onReport, getSyncMessages })
 
+  // 共享資料來源同步（輪詢）：拉他人 SOS 增量 → 走同一套 onSosEvent 合併 / 通知 / 地圖。
+  // 任何本機 SOS 動作都會 push 到後端，讓所有 Vercel 使用者同步看到。
+  const { push: pushSos } = useSosSync(onSosEvent)
+
+  // 本機產生新版事件後：同時走 P2P（即時）與共享後端（跨使用者持久同步）。
+  // 私人（layer A / private）只發給已連線者 → 不寫入共享後端，避免全站可見。
+  const broadcastSos = useCallback((e: SosEvent) => {
+    mesh.shareSosEvent(e)
+    if (e.layer !== 'A') pushSos(e)
+  }, [mesh, pushSos])
+
   // ── 對外 SOS 動作 ──
-  const raiseSos = useCallback((layer: SosLayer, text: string) => {
+  const raiseSos = useCallback((draft: SosDraft) => {
+    const meta = SOS_CATEGORY_META[draft.category]
     const event: SosEvent = {
       id: `sos-${genId()}`, senderId: myId, senderName: name || t('mesh.me'),
-      layer, lat: userLoc.lat, lng: userLoc.lng, text, ts: Date.now(),
-      status: 'active', replies: [], version: 1,
+      layer: SCOPE_TO_LAYER[draft.scope], scope: draft.scope,
+      category: draft.category, priority: meta.priority,
+      lat: userLoc.lat, lng: userLoc.lng, text: draft.text.trim(),
+      shelterId: draft.shelter?.id, shelterName: draft.shelter?.name, shelterLocation: draft.shelter?.location,
+      ts: Date.now(), status: 'new', replies: [], version: 1,
     }
     sos.putLocal(event)
-    mesh.shareSosEvent(event)
-  }, [myId, name, userLoc, sos, mesh, t])
+    broadcastSos(event)
+  }, [myId, name, userLoc, sos, broadcastSos, t])
 
-  const replySos = useCallback((sosId: string, text: string, offerHelp?: boolean) => {
-    const reply: SosReply = { id: genId(), fromId: myId, fromName: name || t('mesh.me'), text, ts: Date.now(), offerHelp }
+  const replySos = useCallback((sosId: string, text: string, kind?: SosReplyKind) => {
+    const reply: SosReply = {
+      id: genId(), fromId: myId, fromName: name || t('mesh.me'), text, ts: Date.now(),
+      kind, offerHelp: kind === 'willing' || undefined,
+    }
     const updated = sos.addReply(sosId, reply)
-    if (updated) mesh.shareSosEvent(updated)
-  }, [myId, name, sos, mesh, t])
+    if (updated) broadcastSos(updated)
+  }, [myId, name, sos, broadcastSos, t])
 
-  const setSosStatus = useCallback((sosId: string, status: HandleStatus, handledBy?: string) => {
+  const setSosStatus = useCallback((sosId: string, status: SosStatus, handledBy?: string) => {
     const updated = sos.setStatus(sosId, status, handledBy ?? (name || t('mesh.me')))
-    if (updated) mesh.shareSosEvent(updated)
-  }, [sos, mesh, name, t])
+    if (updated) broadcastSos(updated)
+  }, [sos, broadcastSos, name, t])
 
-  // 求救者本人標記「已安全」→ 結案、廣播給所有相關節點
+  // 求救者本人標記「已安全」→ 結案、同步給所有相關節點與共享後端
   const markSosSafe = useCallback((sosId: string) => {
     const updated = sos.markSafe(sosId, name || t('mesh.me'))
-    if (updated) mesh.shareSosEvent(updated)
-  }, [sos, mesh, name, t])
+    if (updated) broadcastSos(updated)
+  }, [sos, broadcastSos, name, t])
 
   const markNoticesRead = useCallback(() => {
     setNotices(prev => prev.some(n => !n.read) ? prev.map(n => ({ ...n, read: true })) : prev)
   }, [])
   const unreadCount = useMemo(() => notices.filter(n => !n.read).length, [notices])
 
+  // ── SOS 發送面板（可由避難所卡片等帶預填開啟）──
+  const [composerPrefill, setComposerPrefill] = useState<SosComposerPrefill | null>(null)
+  const openSosComposer = useCallback((prefill?: SosComposerPrefill) => {
+    setComposerPrefill(prefill ?? {})
+  }, [])
+
   return (
     <MeshContext.Provider value={{
       ...mesh, sosFlashId,
-      sosEvents: sos.sosEvents, raiseSos, replySos, setSosStatus, markSosSafe,
+      sosEvents: sos.sosEvents, raiseSos, replySos, setSosStatus, markSosSafe, openSosComposer,
       notices, unreadCount, markNoticesRead,
     }}>
       {children}
+      {composerPrefill && (
+        <SosComposer
+          prefill={composerPrefill}
+          connectedCount={mesh.connectedCount}
+          onSubmit={draft => { raiseSos(draft); setComposerPrefill(null) }}
+          onClose={() => setComposerPrefill(null)}
+        />
+      )}
       {toast && (
         <div className={`fixed top-16 left-1/2 -translate-x-1/2 z-[2000] glass rounded-full px-4 py-2 text-sm font-semibold flex items-center gap-2 border ${
           toast.kind === 'sos' ? 'text-status-danger border-status-danger/50 animate-pulse' : 'text-status-safe border-status-safe/40'}`}>

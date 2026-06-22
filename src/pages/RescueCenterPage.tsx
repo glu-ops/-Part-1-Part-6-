@@ -6,11 +6,13 @@ import { useI18n } from '../i18n'
 import { useShelters, getClientId } from '../contexts/ShelterContext'
 import { usePeerMesh, RESCUE_CENTER_ID } from '../hooks/usePeerMesh'
 import { useSosStore } from '../hooks/useSosStore'
+import { useSosSync } from '../hooks/useSosSync'
+import { isSosClosed } from '../sos'
 import type { MeshMessage } from '../hooks/usePeerMesh'
 import MeshMap from '../components/Map/MeshMap'
 import ReportThreadCard from '../components/Report/ReportThreadCard'
 import SosBoard from '../components/Mesh/SosBoard'
-import type { CrowdReport, SosEvent, SosReply, HandleStatus, ResourceStatus } from '../types'
+import type { CrowdReport, SosEvent, SosReply, SosStatus, SosReplyKind, HandleStatus, ResourceStatus } from '../types'
 import { DEFAULT_LOC } from '../utils/geo'
 
 function genId(): string {
@@ -60,15 +62,23 @@ export default function RescueCenterPage() {
     fixedId: RESCUE_CENTER_ID, myName: t('rescue.title'), onReport, onSosEvent, getSyncMessages,
   })
 
-  // 指揮中心回覆 / 推進 SOS 狀態 → 寫入 store 並廣播給相關節點
-  const replySos = useCallback((sosId: string, text: string, offerHelp?: boolean) => {
-    const reply: SosReply = { id: genId(), fromId: myId || RESCUE_CENTER_ID, fromName: t('rescue.title'), text, ts: Date.now(), offerHelp }
-    const u = sos.addReply(sosId, reply); if (u) shareSosEvent(u)
-  }, [sos, shareSosEvent, myId, t])
+  // 共享後端同步（輪詢）：拉市民端的 SOS 新增/回覆/狀態 → 合併進指揮中心看板
+  const { push: pushSos } = useSosSync(onSosEvent)
+  // 私人（layer A）不寫入共享後端；B/C 同步給所有使用者
+  const broadcastSos = useCallback((e: SosEvent) => { shareSosEvent(e); if (e.layer !== 'A') pushSos(e) }, [shareSosEvent, pushSos])
 
-  const setSosStatusFn = useCallback((sosId: string, status: HandleStatus) => {
-    const u = sos.setStatus(sosId, status, t('rescue.title')); if (u) shareSosEvent(u)
-  }, [sos, shareSosEvent, t])
+  // 指揮中心回覆 / 推進 SOS 狀態 → 寫入 store 並同步（P2P + 共享後端）
+  const replySos = useCallback((sosId: string, text: string, kind?: SosReplyKind) => {
+    const reply: SosReply = {
+      id: genId(), fromId: myId || RESCUE_CENTER_ID, fromName: t('rescue.title'), text, ts: Date.now(),
+      kind, offerHelp: kind === 'willing' || undefined,
+    }
+    const u = sos.addReply(sosId, reply); if (u) broadcastSos(u)
+  }, [sos, broadcastSos, myId, t])
+
+  const setSosStatusFn = useCallback((sosId: string, status: SosStatus) => {
+    const u = sos.setStatus(sosId, status, t('rescue.title')); if (u) broadcastSos(u)
+  }, [sos, broadcastSos, t])
 
   // 回報整串推進狀態 → 廣播每筆更新
   const onThreadStatus = (threadId: string, status: HandleStatus) => {
@@ -81,8 +91,8 @@ export default function RescueCenterPage() {
   const activeThreads = reportThreads.filter(th => th.status !== 'resolved')
   const resolvedThreads = reportThreads.filter(th => th.status === 'resolved')
 
-  // 地圖標記：SOS 白點 + 回報菱形（皆可點開詳情）
-  const openSos = sos.sosEvents.filter(e => e.status !== 'resolved')
+  // 地圖標記：SOS 發光點 + 回報菱形（皆可點開詳情）
+  const openSos = sos.sosEvents.filter(e => !isSosClosed(e.status))
   const sosPoints = openSos.filter(e => e.lat != null && e.lng != null)
   const reportMarkers = activeThreads.filter(th => th.latest.lat && th.latest.lng).map(th => (
     <Marker key={th.threadId} position={[th.latest.lat, th.latest.lng]} icon={reportIcon(th.latest.severity, th.reports.length)}>

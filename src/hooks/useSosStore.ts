@@ -1,10 +1,11 @@
 import { useState, useRef, useCallback, useMemo } from 'react'
-import type { SosEvent, SosReply, HandleStatus } from '../types'
+import type { SosEvent, SosReply, SosStatus } from '../types'
+import { SOS_STATUS_RANK, isSosClosed } from '../sos'
 
 // SOS 事件持久化（同源各分頁共用；指揮中心重整後可重讀歷史）
 const STORE_KEY = 'guardian_sos'
 
-const STATUS_RANK: Record<HandleStatus, number> = { active: 0, received: 1, handling: 2, resolved: 3 }
+const STATUS_RANK = SOS_STATUS_RANK
 
 function uniqReplies(a: SosReply[] = [], b: SosReply[] = []): SosReply[] {
   const byId = new Map<string, SosReply>()
@@ -38,7 +39,7 @@ function load(): SosEvent[] {
 export interface SosMergeResult {
   changed: boolean
   merged: SosEvent
-  prevStatus?: HandleStatus
+  prevStatus?: SosStatus
   isNew: boolean
 }
 
@@ -96,7 +97,7 @@ export function useSosStore() {
   }, [persist])
 
   /** 推進處理狀態（指揮中心 / 接手者）→ 回傳新版事件供分享 */
-  const setStatus = useCallback((sosId: string, status: HandleStatus, handledBy?: string): SosEvent | null => {
+  const setStatus = useCallback((sosId: string, status: SosStatus, handledBy?: string): SosEvent | null => {
     const cur = ref.current
     const i = cur.findIndex(x => x.id === sosId)
     if (i === -1) return null
@@ -115,7 +116,7 @@ export function useSosStore() {
     const i = cur.findIndex(x => x.id === sosId)
     if (i === -1) return null
     const updated: SosEvent = {
-      ...cur[i], status: 'resolved', safeBySelf: true,
+      ...cur[i], status: 'safe', safeBySelf: true,
       handledBy: cur[i].handledBy ?? byName,
       version: cur[i].version + 1,
     }
@@ -123,8 +124,8 @@ export function useSosStore() {
     return updated
   }, [persist])
 
-  /** 未結案（active/received/handling）的 SOS，用於重連同步 */
-  const openEvents = useMemo(() => sosEvents.filter(e => e.status !== 'resolved'), [sosEvents])
+  /** 未結案（非 safe/resolved）的 SOS，用於重連同步 */
+  const openEvents = useMemo(() => sosEvents.filter(e => !isSosClosed(e.status)), [sosEvents])
   const openEventsRef = useRef(openEvents)
   openEventsRef.current = openEvents
 
