@@ -24,7 +24,7 @@ severity 只能是以下之一：
 
 note：用繁體中文，30 字以內簡短描述照片中觀察到的狀況。`
 
-export async function analyzeImage(dataUrl: string): Promise<VisionResult> {
+export async function analyzeImage(dataUrl: string, signal?: AbortSignal): Promise<VisionResult> {
   const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY as string | undefined
   if (!apiKey) throw new Error('NO_API_KEY')
 
@@ -36,6 +36,7 @@ export async function analyzeImage(dataUrl: string): Promise<VisionResult> {
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
     {
       method: 'POST',
+      signal,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{

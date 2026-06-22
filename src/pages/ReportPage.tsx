@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { CheckCircle, MapPin, LocateFixed, Loader2, ImagePlus, X, Sparkles } from 'lucide-react'
+import { CheckCircle, MapPin, LocateFixed, Loader2, ImagePlus, X, Sparkles, ScanSearch } from 'lucide-react'
 import { useShelters, getClientId } from '../contexts/ShelterContext'
 import { useUser } from '../contexts/UserContext'
 import { useMesh } from '../contexts/MeshContext'
@@ -53,6 +53,8 @@ export default function ReportPage() {
   const [aiApplied, setAiApplied] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const locTouched = useRef(false)
+  const analyzingRef = useRef(false)
+  const abortRef = useRef<AbortController | null>(null)
 
   // 選定避難所時，回報位置一律採用避難所正確座標（不被手動位置覆蓋）
   const selectedShelter = shelters.find(s => s.shelter_id === shelterId)
@@ -71,23 +73,39 @@ export default function ReportPage() {
     if (!list) return
     const { attachments } = await filesToAttachments(list)
     setFiles(prev => [...prev, ...attachments])
+    setAiApplied(false)
+  }
 
-    const firstImage = attachments.find(a => a.kind === 'image')
-    if (firstImage && isVisionEnabled()) {
-      setAnalyzing(true)
-      try {
-        const result = await analyzeImage(firstImage.url)
+  async function runAnalysis() {
+    if (analyzingRef.current) return
+    const img = files.find(f => f.kind === 'image')
+    if (!img) return
+
+    abortRef.current?.abort()
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
+
+    analyzingRef.current = true
+    setAnalyzing(true)
+    try {
+      const result = await analyzeImage(img.url, ctrl.signal)
+      if (!ctrl.signal.aborted) {
         setType(result.type)
         setSeverity(result.severity)
         if (result.note) setNote(result.note)
         setAiApplied(true)
-      } catch {
-        // API failure — user fills form manually
-      } finally {
-        setAnalyzing(false)
       }
+    } catch {
+      // API failure or aborted — user fills form manually
+    } finally {
+      analyzingRef.current = false
+      setAnalyzing(false)
     }
   }
+
+  useEffect(() => {
+    return () => { abortRef.current?.abort() }
+  }, [])
 
   function submit() {
     const id = makeReportId(cid)
@@ -134,19 +152,11 @@ export default function ReportPage() {
 
         {/* 附件上傳（放在最前面，讓 AI 辨識結果自動填入下方欄位） */}
         <div className="glass-cell rounded-2xl p-4">
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-xs text-white/45">{t('report.attachments')}</label>
-            {isVisionEnabled() && (
-              <span className="flex items-center gap-1 text-[10px] text-white/35">
-                <Sparkles size={10} />{t('report.aiHint')}
-              </span>
-            )}
-          </div>
-          <button onClick={() => fileRef.current?.click()} disabled={analyzing}
-            className="w-full border border-dashed border-white/25 rounded-xl py-5 flex flex-col items-center gap-1.5 text-white/45 hover:text-white/70 hover:border-white/40 transition-colors disabled:opacity-50">
-            {analyzing
-              ? <><Loader2 size={20} className="animate-spin text-white/70" /><span className="text-[11px] text-white/70">{t('report.aiAnalyzing')}</span></>
-              : <><ImagePlus size={20} /><span className="text-[11px]">{t('report.dropHint')}</span></>}
+          <label className="text-xs text-white/45 block mb-2">{t('report.attachments')}</label>
+          <button onClick={() => fileRef.current?.click()}
+            className="w-full border border-dashed border-white/25 rounded-xl py-5 flex flex-col items-center gap-1.5 text-white/45 hover:text-white/70 hover:border-white/40 transition-colors">
+            <ImagePlus size={20} />
+            <span className="text-[11px]">{t('report.dropHint')}</span>
           </button>
           <input ref={fileRef} type="file" accept="image/*,video/*,*/*" multiple className="hidden" onChange={e => { addFiles(e.target.files); e.target.value = '' }} />
           {files.length > 0 && (
@@ -165,6 +175,14 @@ export default function ReportPage() {
                 </div>
               ))}
             </div>
+          )}
+          {isVisionEnabled() && files.some(f => f.kind === 'image') && (
+            <button onClick={runAnalysis} disabled={analyzing}
+              className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 bg-white/10 text-white hover:bg-white/20">
+              {analyzing
+                ? <><Loader2 size={15} className="animate-spin" />{t('report.aiAnalyzing')}</>
+                : <><ScanSearch size={15} />{t('report.aiTrigger')}</>}
+            </button>
           )}
           {aiApplied && (
             <div className="flex items-center gap-1.5 mt-2 text-[11px] text-status-safe">
