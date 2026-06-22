@@ -51,6 +51,7 @@ export default function ReportPage() {
   const [saveWarning, setSaveWarning] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
   const [aiApplied, setAiApplied] = useState(false)
+  const [aiError, setAiError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
   const locTouched = useRef(false)
   const analyzingRef = useRef(false)
@@ -87,6 +88,7 @@ export default function ReportPage() {
 
     analyzingRef.current = true
     setAnalyzing(true)
+    setAiError('')
     try {
       const result = await analyzeImage(img.url, ctrl.signal)
       if (!ctrl.signal.aborted) {
@@ -95,8 +97,12 @@ export default function ReportPage() {
         if (result.note) setNote(result.note)
         setAiApplied(true)
       }
-    } catch {
-      // API failure or aborted — user fills form manually
+    } catch (err) {
+      if (!ctrl.signal.aborted) {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.error('[AI]', msg)
+        setAiError(msg)
+      }
     } finally {
       analyzingRef.current = false
       setAnalyzing(false)
@@ -187,6 +193,11 @@ export default function ReportPage() {
           {aiApplied && (
             <div className="flex items-center gap-1.5 mt-2 text-[11px] text-status-safe">
               <Sparkles size={11} />{t('report.aiDone')}
+            </div>
+          )}
+          {aiError && (
+            <div className="mt-2 text-[11px] text-status-danger break-all">
+              AI 辨識失敗：{aiError}
             </div>
           )}
         </div>
