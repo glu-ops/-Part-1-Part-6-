@@ -24,42 +24,49 @@ severity 只能是以下之一：
 
 note：用繁體中文，30 字以內簡短描述照片中觀察到的狀況。`
 
+let lastCallTs = 0
+const MIN_INTERVAL_MS = 3000
+
+const HF_ENDPOINT = 'https://api-inference.huggingface.co/models/Qwen/Qwen2-VL-2B-Instruct/v1/chat/completions'
+
 export async function analyzeImage(dataUrl: string, signal?: AbortSignal): Promise<VisionResult> {
-  const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY as string | undefined
-  if (!apiKey) throw new Error('NO_API_KEY')
+  const now = Date.now()
+  if (now - lastCallTs < MIN_INTERVAL_MS) throw new Error('RATE_LIMITED')
+  lastCallTs = now
 
-  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/)
-  if (!match) throw new Error('Invalid image data URL')
-  const [, mimeType, base64] = match
+  const token = (import.meta as any).env?.VITE_HF_TOKEN as string | undefined
+  if (!token) throw new Error('NO_API_KEY')
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      signal,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: PROMPT },
-            { inlineData: { mimeType, data: base64 } },
-          ],
-        }],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 256,
-        },
-      }),
+  const res = await fetch(HF_ENDPOINT, {
+    method: 'POST',
+    signal,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
     },
-  )
+    body: JSON.stringify({
+      model: 'Qwen/Qwen2-VL-2B-Instruct',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'image_url', image_url: { url: dataUrl } },
+            { type: 'text', text: PROMPT },
+          ],
+        },
+      ],
+      max_tokens: 256,
+      stream: false,
+    }),
+  })
 
   if (!res.ok) {
     const errText = await res.text().catch(() => '')
-    throw new Error(`Gemini API ${res.status}: ${errText.slice(0, 200)}`)
+    throw new Error(`HF API ${res.status}: ${errText.slice(0, 200)}`)
   }
 
   const json = await res.json()
-  const text: string = json.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+  const text: string = json.choices?.[0]?.message?.content ?? ''
 
   const jsonMatch = text.match(/\{[\s\S]*\}/)
   if (!jsonMatch) throw new Error('No JSON in response')
@@ -77,5 +84,5 @@ export async function analyzeImage(dataUrl: string, signal?: AbortSignal): Promi
 }
 
 export function isVisionEnabled(): boolean {
-  return !!((import.meta as any).env?.VITE_GEMINI_API_KEY)
+  return !!((import.meta as any).env?.VITE_HF_TOKEN)
 }
