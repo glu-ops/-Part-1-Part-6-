@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { CheckCircle, MapPin, LocateFixed, Loader2, ImagePlus, X } from 'lucide-react'
+import { CheckCircle, MapPin, LocateFixed, Loader2, ImagePlus, X, Sparkles, ScanSearch } from 'lucide-react'
 import { useShelters, getClientId } from '../contexts/ShelterContext'
 import { useUser } from '../contexts/UserContext'
 import { useMesh } from '../contexts/MeshContext'
@@ -10,6 +10,7 @@ import { useIsDesktop } from '../hooks'
 import LocationPicker from '../components/Map/LocationPicker'
 import ReportThreadCard from '../components/Report/ReportThreadCard'
 import { filesToAttachments } from '../utils/image'
+import { analyzeImage, isVisionEnabled } from '../utils/vision'
 import type { CrowdReport, ReportType, ResourceStatus, Attachment } from '../types'
 
 const TYPES: { value: ReportType; key: string }[] = [
@@ -48,8 +49,12 @@ export default function ReportPage() {
   const [files, setFiles] = useState<Attachment[]>([])
   const [done, setDone] = useState(false)
   const [saveWarning, setSaveWarning] = useState(false)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [aiApplied, setAiApplied] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const locTouched = useRef(false)
+  const analyzingRef = useRef(false)
+  const abortRef = useRef<AbortController | null>(null)
 
   // 選定避難所時，回報位置一律採用避難所正確座標（不被手動位置覆蓋）
   const selectedShelter = shelters.find(s => s.shelter_id === shelterId)
@@ -66,10 +71,41 @@ export default function ReportPage() {
 
   async function addFiles(list: FileList | null) {
     if (!list) return
-    // 圖片壓縮 / 影片 / 檔案 → data URL（可持久化 + 可透過 Mesh 傳遞）
     const { attachments } = await filesToAttachments(list)
     setFiles(prev => [...prev, ...attachments])
+    setAiApplied(false)
   }
+
+  async function runAnalysis() {
+    if (analyzingRef.current) return
+    const img = files.find(f => f.kind === 'image')
+    if (!img) return
+
+    abortRef.current?.abort()
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
+
+    analyzingRef.current = true
+    setAnalyzing(true)
+    try {
+      const result = await analyzeImage(img.url, ctrl.signal)
+      if (!ctrl.signal.aborted) {
+        setType(result.type)
+        setSeverity(result.severity)
+        if (result.note) setNote(result.note)
+        setAiApplied(true)
+      }
+    } catch {
+      // API failure or aborted — user fills form manually
+    } finally {
+      analyzingRef.current = false
+      setAnalyzing(false)
+    }
+  }
+
+  useEffect(() => {
+    return () => { abortRef.current?.abort() }
+  }, [])
 
   function submit() {
     const id = makeReportId(cid)
@@ -114,87 +150,7 @@ export default function ReportPage() {
           </div>
         )}
 
-        {/* Type */}
-        <div className="glass-cell rounded-2xl p-4">
-          <label className="text-xs text-white/45 block mb-3">{t('report.type')}</label>
-          <div className="grid grid-cols-2 gap-2">
-            {TYPES.map(ty => (
-              <button key={ty.value} onClick={() => setType(ty.value)}
-                className={`py-2.5 rounded-xl text-sm font-medium transition-colors ${type === ty.value ? 'bg-white text-neutral-900' : 'glass-cell text-white/65'}`}>
-                {t(ty.key)}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Shelter */}
-        <div className="glass-cell rounded-2xl p-4">
-          <label className="text-xs text-white/45 block mb-2">{t('report.relatedShelter')}</label>
-          <select value={shelterId} onChange={e => setShelterId(e.target.value)}
-            className="w-full glass-cell text-white text-sm rounded-lg px-3 py-2 outline-none">
-            <option value="">{t('report.none')}</option>
-            {shelters.map(s => (<option key={s.shelter_id} value={s.shelter_id}>{s.name}</option>))}
-          </select>
-        </div>
-
-        {/* Severity */}
-        <div className="glass-cell rounded-2xl p-4">
-          <label className="text-xs text-white/45 block mb-3">{t('report.severity')}</label>
-          <div className="flex gap-2">
-            {SEV.map(s => (
-              <button key={s.value} onClick={() => setSeverity(s.value)}
-                className={`flex-1 py-2.5 rounded-xl text-sm font-bold border-2 transition-colors ${severity === s.value ? s.cls + ' bg-white/5' : 'border-white/10 text-white/40'}`}>
-                {t(s.key)}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* 回報位置 */}
-        <div className="glass-cell rounded-2xl p-4">
-          {selectedShelter ? (
-            // 針對避難所回報：直接使用該避難所正確座標，免手動選位置
-            <>
-              <label className="text-xs text-white/45 flex items-center gap-1.5 mb-2">
-                <MapPin size={13} className="text-white/60" />{t('report.shelterLocation')}
-              </label>
-              <div className="flex items-center gap-2 glass-cell rounded-xl px-3 py-2.5">
-                <MapPin size={15} className="text-status-safe shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-sm text-white font-medium truncate">{selectedShelter.name}</p>
-                  <p className="text-[11px] text-white/45 num">{reportLoc.lat.toFixed(5)}, {reportLoc.lng.toFixed(5)}</p>
-                </div>
-              </div>
-              <p className="text-[10px] text-white/40 mt-1.5">{t('report.shelterLocHint')}</p>
-            </>
-          ) : (
-            <>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-xs text-white/45 flex items-center gap-1.5">
-                  <MapPin size={13} className="text-white/60" />{t('report.location')}
-                </label>
-                <button onClick={() => { locateMe().then(setPickedLoc).catch(() => {}) }}
-                  className="flex items-center gap-1 text-[11px] text-white glass-cell rounded-full px-2.5 py-1 shrink-0">
-                  {locating ? <Loader2 size={12} className="animate-spin" /> : <LocateFixed size={12} />}{t('report.locate')}
-                </button>
-              </div>
-              {/* 行動版：內嵌選點地圖 */}
-              {!isDesktop && (
-                <LocationPicker value={loc} onChange={setPickedLoc} />
-              )}
-              <p className="text-[11px] text-white/45 mt-2 num">{t('report.coords', { lat: loc.lat.toFixed(5), lng: loc.lng.toFixed(5) })}</p>
-            </>
-          )}
-        </div>
-
-        {/* Note */}
-        <div className="glass-cell rounded-2xl p-4">
-          <label className="text-xs text-white/45 block mb-2">{t('report.note')}</label>
-          <textarea value={note} onChange={e => setNote(e.target.value)} placeholder={t('report.notePlaceholder')} rows={3}
-            className="w-full glass-cell text-white text-sm rounded-xl px-3 py-2.5 outline-none resize-none placeholder-white/35" />
-        </div>
-
-        {/* 附件上傳 */}
+        {/* 附件上傳（放在最前面，讓 AI 辨識結果自動填入下方欄位） */}
         <div className="glass-cell rounded-2xl p-4">
           <label className="text-xs text-white/45 block mb-2">{t('report.attachments')}</label>
           <button onClick={() => fileRef.current?.click()}
@@ -220,6 +176,97 @@ export default function ReportPage() {
               ))}
             </div>
           )}
+          {isVisionEnabled() && files.some(f => f.kind === 'image') && (
+            <button onClick={runAnalysis} disabled={analyzing}
+              className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 bg-white/10 text-white hover:bg-white/20">
+              {analyzing
+                ? <><Loader2 size={15} className="animate-spin" />{t('report.aiAnalyzing')}</>
+                : <><ScanSearch size={15} />{t('report.aiTrigger')}</>}
+            </button>
+          )}
+          {aiApplied && (
+            <div className="flex items-center gap-1.5 mt-2 text-[11px] text-status-safe">
+              <Sparkles size={11} />{t('report.aiDone')}
+            </div>
+          )}
+        </div>
+
+        {/* Type */}
+        <div className="glass-cell rounded-2xl p-4">
+          <label className="text-xs text-white/45 block mb-3">{t('report.type')}</label>
+          <div className="grid grid-cols-2 gap-2">
+            {TYPES.map(ty => (
+              <button key={ty.value} onClick={() => { setType(ty.value); setAiApplied(false) }}
+                className={`py-2.5 rounded-xl text-sm font-medium transition-colors ${type === ty.value ? 'bg-white text-neutral-900' : 'glass-cell text-white/65'}`}>
+                {t(ty.key)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Shelter */}
+        <div className="glass-cell rounded-2xl p-4">
+          <label className="text-xs text-white/45 block mb-2">{t('report.relatedShelter')}</label>
+          <select value={shelterId} onChange={e => setShelterId(e.target.value)}
+            className="w-full glass-cell text-white text-sm rounded-lg px-3 py-2 outline-none">
+            <option value="">{t('report.none')}</option>
+            {shelters.map(s => (<option key={s.shelter_id} value={s.shelter_id}>{s.name}</option>))}
+          </select>
+        </div>
+
+        {/* Severity */}
+        <div className="glass-cell rounded-2xl p-4">
+          <label className="text-xs text-white/45 block mb-3">{t('report.severity')}</label>
+          <div className="flex gap-2">
+            {SEV.map(s => (
+              <button key={s.value} onClick={() => { setSeverity(s.value); setAiApplied(false) }}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-bold border-2 transition-colors ${severity === s.value ? s.cls + ' bg-white/5' : 'border-white/10 text-white/40'}`}>
+                {t(s.key)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 回報位置 */}
+        <div className="glass-cell rounded-2xl p-4">
+          {selectedShelter ? (
+            <>
+              <label className="text-xs text-white/45 flex items-center gap-1.5 mb-2">
+                <MapPin size={13} className="text-white/60" />{t('report.shelterLocation')}
+              </label>
+              <div className="flex items-center gap-2 glass-cell rounded-xl px-3 py-2.5">
+                <MapPin size={15} className="text-status-safe shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-sm text-white font-medium truncate">{selectedShelter.name}</p>
+                  <p className="text-[11px] text-white/45 num">{reportLoc.lat.toFixed(5)}, {reportLoc.lng.toFixed(5)}</p>
+                </div>
+              </div>
+              <p className="text-[10px] text-white/40 mt-1.5">{t('report.shelterLocHint')}</p>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs text-white/45 flex items-center gap-1.5">
+                  <MapPin size={13} className="text-white/60" />{t('report.location')}
+                </label>
+                <button onClick={() => { locateMe().then(setPickedLoc).catch(() => {}) }}
+                  className="flex items-center gap-1 text-[11px] text-white glass-cell rounded-full px-2.5 py-1 shrink-0">
+                  {locating ? <Loader2 size={12} className="animate-spin" /> : <LocateFixed size={12} />}{t('report.locate')}
+                </button>
+              </div>
+              {!isDesktop && (
+                <LocationPicker value={loc} onChange={setPickedLoc} />
+              )}
+              <p className="text-[11px] text-white/45 mt-2 num">{t('report.coords', { lat: loc.lat.toFixed(5), lng: loc.lng.toFixed(5) })}</p>
+            </>
+          )}
+        </div>
+
+        {/* Note */}
+        <div className="glass-cell rounded-2xl p-4">
+          <label className="text-xs text-white/45 block mb-2">{t('report.note')}</label>
+          <textarea value={note} onChange={e => setNote(e.target.value)} placeholder={t('report.notePlaceholder')} rows={3}
+            className="w-full glass-cell text-white text-sm rounded-xl px-3 py-2.5 outline-none resize-none placeholder-white/35" />
         </div>
 
         {/* 最近回報（同地點多人補充合併為一串） */}
