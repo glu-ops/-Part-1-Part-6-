@@ -105,6 +105,8 @@ export function MeshProvider({ children }: { children: ReactNode }) {
   const annSeenRef = useRef<Set<string>>(
     new Set(notices.filter(n => n.kind === 'announce' && n.refId).map(n => n.refId as string)),
   )
+  // SOS 動態通知去重：同一則回覆 / 狀態更新只通知一次（P2P 與後端輪詢兩來源收斂）。
+  const sosNoticeSeenRef = useRef<Set<string>>(new Set())
 
   const showToast = useCallback((kind: 'sos' | 'done' | 'announce', text: string) => {
     setToast({ kind, text })
@@ -139,7 +141,7 @@ export function MeshProvider({ children }: { children: ReactNode }) {
   const onSosEvent = useCallback((s: SosEvent) => {
     const { changed, merged, prevStatus, isNew } = sos.mergeRemote(s)
     if (!changed) return
-    const who = merged.senderName || t('notice.someone')
+    const who = merged.senderName || t('notice.someone')          // 求救者
     const latestReply = merged.replies.length ? merged.replies[merged.replies.length - 1] : null
     const base = {
       reporter: who, typeLabel: t(`sos.cat.${merged.category}`),
@@ -147,18 +149,34 @@ export function MeshProvider({ children }: { children: ReactNode }) {
       latest: latestReply ? `${latestReply.fromName}：${latestReply.text}` : merged.text,
       refKind: 'sos' as const, refId: merged.id, lat: merged.lat, lng: merged.lng,
     }
+    // 同一則動態只通知一次：以「事件 + 具體更新內容」為去重鍵，擋下 P2P 與後端輪詢
+    // 兩條路徑各觸發一次的重複（mergeRemote 的 changed 判斷對欄位順序敏感、無法完全擋下）。
+    const once = (key: string): boolean => {
+      if (sosNoticeSeenRef.current.has(key)) return false
+      sosNoticeSeenRef.current.add(key)
+      return true
+    }
     if (isNew) {
+      if (!once(`new:${merged.id}`)) return
       showToast('sos', t('mesh.sosReceived', { id: who }))
       setSosFlashId(merged.senderId)
       setTimeout(() => setSosFlashId(null), 6000)
       addNotice({ kind: 'sos-new', text: t('notice.sosNew', { who }), ...base })
     } else if (merged.status === 'safe' && merged.safeBySelf) {
+      if (!once(`safe:${merged.id}`)) return
       addNotice({ kind: 'sos-safe', text: t('notice.sosSafe', { who }), ...base })
     } else if (prevStatus && prevStatus !== merged.status) {
-      addNotice({ kind: 'sos-status', text: t('notice.sosStatus', { who, status: t(`sos.status.${merged.status}`) }), ...base })
-    } else {
-      // 狀態未變但有演變 → 視為新回覆（有人願意幫忙等）
-      addNotice({ kind: 'sos-reply', text: t('notice.sosReply', { who }), ...base })
+      // 狀態推進：標示「誰」接手 / 結案（指揮中心或熱心民眾）。
+      if (!once(`status:${merged.id}:${merged.status}:${merged.handledBy ?? ''}`)) return
+      const handler = merged.handledBy
+      const text = handler
+        ? t(merged.status === 'resolved' ? 'notice.sosResolvedBy' : 'notice.sosHandledBy', { who: handler, sender: who })
+        : t('notice.sosStatus', { who, status: t(`sos.status.${merged.status}`) })
+      addNotice({ kind: 'sos-status', text, ...base })
+    } else if (latestReply) {
+      // 狀態未變但有新回覆 → 標示「誰」回覆了誰的 SOS。
+      if (!once(`reply:${merged.id}:${latestReply.id}`)) return
+      addNotice({ kind: 'sos-reply', text: t('notice.sosReplyBy', { who: latestReply.fromName, sender: who }), ...base })
     }
   }, [sos, addNotice, showToast, t])
 
