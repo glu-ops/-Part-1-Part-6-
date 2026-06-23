@@ -4,6 +4,7 @@ import type { Shelter, OverallStatus } from '../../types'
 import StatusBadge from './StatusBadge'
 import { useI18n } from '../../i18n'
 import { useMesh } from '../../contexts/MeshContext'
+import { getShelterSupportTimes, supportTimeColor, supportTimeLabel } from '../../utils/shelterCapacity'
 
 interface Props {
   shelter: Shelter
@@ -15,8 +16,6 @@ interface Props {
 
 const resIcons = { water: Droplets, food: Utensils, medical: Heart, power: Zap }
 const resLabelKey = { water: 'res.water', food: 'res.food', medical: 'res.medical', power: 'res.power' }
-const resColor = { green: 'text-status-safe', yellow: 'text-status-caution', red: 'text-status-danger' }
-
 export default function ShelterCard({ shelter: s, status, distanceM, walkMin, compact = false }: Props) {
   const nav = useNavigate()
   const { t, rt } = useI18n()
@@ -24,6 +23,7 @@ export default function ShelterCard({ shelter: s, status, distanceM, walkMin, co
   const occ = Math.round((s.capacity.current_estimate / s.capacity.physical) * 100)
   const occColor = occ > 90 ? 'text-status-danger' : occ > 70 ? 'text-status-caution' : 'text-status-safe'
   const occBar   = occ > 90 ? 'bg-status-danger' : occ > 70 ? 'bg-status-caution' : 'bg-status-safe'
+  const supportTimes = getShelterSupportTimes(s)
 
   return (
     <div
@@ -57,6 +57,9 @@ export default function ShelterCard({ shelter: s, status, distanceM, walkMin, co
           <Users size={11} />
           <span className="num text-white/80">{s.capacity.current_estimate}/{s.capacity.physical}</span>
         </span>
+        {s.capacity_people && (
+          <span className="text-white/45">{s.capacity_people}</span>
+        )}
       </div>
 
       <div className="mb-3">
@@ -73,12 +76,12 @@ export default function ShelterCard({ shelter: s, status, distanceM, walkMin, co
         <div className="grid grid-cols-4 gap-2">
           {(Object.keys(resIcons) as Array<keyof typeof resIcons>).map(key => {
             const Icon = resIcons[key]
-            const val = s.resources[key]
+            const time = supportTimes[key]
             return (
               <div key={key} className="flex flex-col items-center gap-0.5">
-                <Icon size={14} className={resColor[val]} />
+                <Icon size={14} className={supportTimeColor(time)} />
                 <span className="text-[10px] text-white/45">{t(resLabelKey[key])}</span>
-                <span className={`text-[10px] font-medium ${resColor[val]}`}>{t(`res.${val}`)}</span>
+                <span className={`text-[10px] font-medium ${supportTimeColor(time)}`}>{supportTimeLabel(time, t('common.hours'))}</span>
               </div>
             )
           })}

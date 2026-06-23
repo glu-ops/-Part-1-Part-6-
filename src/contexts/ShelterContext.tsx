@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import type { Shelter, CrowdReport, HandleStatus } from '../types'
 import sheltersData from '../data/shelters.json'
 import reportsData from '../data/reports.json'
+import { enrichShelterWithCapacity } from '../utils/shelterCapacity'
 
 // 處理狀態優先序（合併時取較進階者）
 const STATUS_RANK: Record<HandleStatus, number> = { active: 0, received: 1, handling: 2, resolved: 3 }
@@ -135,13 +136,13 @@ export function ShelterProvider({ children }: { children: ReactNode }) {
   const shelters = useMemo(() => {
     return (sheltersData as Shelter[]).map(s => {
       const surge = Math.floor(getSurgeRate(s.shelter_id) * timeOffset)
-      return {
+      return enrichShelterWithCapacity({
         ...s,
         capacity: {
           ...s.capacity,
           current_estimate: Math.min(s.capacity.physical, s.capacity.current_estimate + surge),
         },
-      }
+      })
     })
   }, [timeOffset])
 
