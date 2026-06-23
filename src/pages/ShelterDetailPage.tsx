@@ -16,6 +16,7 @@ import {
 import { getSurgeRate } from '../contexts/ShelterContext'
 import StatusBadge from '../components/ShelterCard/StatusBadge'
 import { DISASTER_ICON } from '../disasters'
+import { getResourceCapacityStatus, getShelterSupportTimes, supportTimeColor, supportTimeLabel } from '../utils/shelterCapacity'
 import type { EntryStatus, ResourceStatus, DisasterMode } from '../types'
 
 // 災害情境圖示（單色線條，繼承所在文字顏色）
@@ -37,12 +38,6 @@ const RES_CFG = [
   { key: 'medical' as const, labelKey: 'res.medical', Icon: Heart    },
   { key: 'power'   as const, labelKey: 'res.power',   Icon: Zap      },
 ]
-const RES_COLOR: Record<ResourceStatus, string> = {
-  green:  'text-status-safe',
-  yellow: 'text-status-caution',
-  red:    'text-status-danger',
-}
-
 const REPORT_SEV_COLOR: Record<ResourceStatus, string> = {
   green: 'text-status-safe', yellow: 'text-status-caution', red: 'text-status-danger',
 }
@@ -78,6 +73,8 @@ export default function ShelterDetailPage() {
   const liveReports = reports.filter(r => r.shelter_id === id)
   const totalReports = liveReports.length + s.report_count
   const latestReport = liveReports[liveReports.length - 1]
+  const supportTimes = getShelterSupportTimes(s)
+  const resourceCapacityStatus = getResourceCapacityStatus(s)
 
   const entryCfg = ENTRY_STATUS_CFG[s.entry_status]
   const occColor = occ > 90 ? 'text-status-danger' : occ > 70 ? 'text-status-caution' : 'text-status-safe'
@@ -86,9 +83,9 @@ export default function ShelterDetailPage() {
   const arrBar   = arrivalStatus === 'safe' ? 'bg-status-safe' : arrivalStatus === 'caution' ? 'bg-status-caution' : 'bg-status-danger'
 
   return (
-    <div className="min-h-screen pb-28 max-w-2xl mx-auto">
-      {/* Sticky header */}
-      <div className="sticky top-14 glass border-b border-white/10 px-4 py-3 flex items-center gap-3 z-10">
+    <div className="min-h-screen pb-44 pt-14 max-w-2xl mx-auto">
+      {/* Page header */}
+      <div className="glass border-b border-white/10 px-4 py-3 flex items-center gap-3">
         <button onClick={() => nav(-1)} className="text-white/55 hover:text-white p-1 -ml-1">
           <ArrowLeft size={20} />
         </button>
@@ -145,8 +142,9 @@ export default function ShelterDetailPage() {
         {/* 容量資訊 */}
         <div className="glass rounded-2xl p-4">
           <p className="text-xs text-white/45 uppercase tracking-wider mb-3">{t('detail.capacityInfo')}</p>
-          <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
             {[
+              { label: t('detail.capacityPeople'), value: s.capacity_people ?? t('detail.unknown') },
               { label: t('detail.current'),    value: s.capacity.current_estimate },
               { label: t('detail.physical'),   value: s.capacity.physical },
               { label: t('detail.vulnerable'), value: s.capacity.vulnerable_capacity },
@@ -196,15 +194,57 @@ export default function ShelterDetailPage() {
           <p className="text-xs text-white/45 uppercase tracking-wider mb-3">{t('detail.resStatus')}</p>
           <div className="grid grid-cols-4 gap-2">
             {RES_CFG.map(({ key, labelKey, Icon }) => {
-              const val = s.resources[key]
+              const time = supportTimes[key]
               return (
                 <div key={key} className="glass-cell rounded-xl p-3 flex flex-col items-center gap-1.5">
-                  <Icon size={18} className={RES_COLOR[val]} />
+                  <Icon size={18} className={supportTimeColor(time)} />
                   <span className="text-[10px] text-white/45">{t(labelKey)}</span>
-                  <span className={`text-[11px] font-bold ${RES_COLOR[val]}`}>{t(`res.${val}`)}</span>
+                  <span className={`text-[11px] font-bold ${supportTimeColor(time)}`}>{supportTimeLabel(time, t('common.hours'))}</span>
                 </div>
               )
             })}
+          </div>
+        </div>
+
+        {/* 容量與資源評估 */}
+        <div className="glass rounded-2xl p-4">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div>
+              <p className="text-xs text-white/45 uppercase tracking-wider">{t('detail.capacityAssessment')}</p>
+              <p className="text-sm text-white font-semibold mt-1">
+                {s.resource_capacity_level ?? '-'}{s.overall_role ? ` · ${s.overall_role}` : ''}
+              </p>
+            </div>
+            <span className="glass-cell rounded-full px-3 py-1 text-[11px] text-white/70 shrink-0">
+              {t(`capacity.hint.${resourceCapacityStatus ?? 'unknown'}`)}
+            </span>
+          </div>
+
+          <div className="grid gap-3">
+            <div className="glass-cell rounded-xl p-3">
+              <p className="text-[11px] text-white/45 mb-1">{t('detail.resourceConditions')}</p>
+              <p className="text-sm text-white/85 leading-relaxed">{s.resource_conditions ?? t('detail.unknown')}</p>
+            </div>
+            <div className="glass-cell rounded-xl p-3">
+              <p className="text-[11px] text-white/45 mb-1">{t('detail.entranceCapacity')}</p>
+              <p className="text-sm text-white/85 leading-relaxed">{s.entrance_capacity ?? t('detail.unknown')}</p>
+            </div>
+            <div className="glass-cell rounded-xl p-3">
+              <p className="text-[11px] text-white/45 mb-1">{t('detail.physicalCapacity')}</p>
+              <p className="text-sm text-white/85 leading-relaxed">{s.physical_capacity ?? t('detail.unknown')}</p>
+            </div>
+            <div className="glass-cell rounded-xl p-3">
+              <p className="text-[11px] text-white/45 mb-1">{t('detail.suitableUsers')}</p>
+              <p className="text-sm text-white/85 leading-relaxed">{s.suitable_users ?? t('detail.unknown')}</p>
+            </div>
+            <div className="glass-cell rounded-xl p-3">
+              <p className="text-[11px] text-white/45 mb-1">{t('detail.managementCapacity')}</p>
+              <p className="text-sm text-white/85 leading-relaxed">{s.management_capacity ?? t('detail.unknown')}</p>
+            </div>
+            <div className="glass-cell rounded-xl p-3">
+              <p className="text-[11px] text-white/45 mb-1">{t('detail.notes')}</p>
+              <p className="text-sm text-white/85 leading-relaxed">{s.notes ?? t('detail.unknown')}</p>
+            </div>
           </div>
         </div>
 

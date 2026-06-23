@@ -5,6 +5,8 @@ export type OverallStatus = 'safe' | 'caution' | 'danger'
 export type UserRole = 'student' | 'elderly' | 'pregnant' | 'child' | 'disabled' | 'adult'
 export type DisasterMode = 'earthquake' | 'flood' | 'war' | 'epidemic'
 export type ReportType = 'crowd' | 'road' | 'resource' | 'disaster'
+export type SupportTime = '0-4' | '4-24' | '24-72' | '72+'
+export type ResourceCapacityLevel = 'R1' | 'R2' | 'R3' | 'R4'
 
 // 回報 / SOS 共用的處理狀態機（指揮中心可推進）
 export type HandleStatus = 'active' | 'received' | 'handling' | 'resolved'
@@ -55,6 +57,21 @@ export interface Shelter {
     medical: ResourceStatus
     power: ResourceStatus
   }
+  capacity_people?: string
+  current_occupancy?: number
+  water_support_time?: SupportTime
+  food_support_time?: SupportTime
+  medical_support_time?: SupportTime
+  power_support_time?: SupportTime
+  physical_capacity?: string
+  entrance_capacity?: string
+  resource_capacity_level?: ResourceCapacityLevel
+  support_time?: SupportTime
+  resource_conditions?: string
+  suitable_users?: string
+  overall_role?: string
+  management_capacity?: string
+  notes?: string
   last_updated: string
   report_count: number
   applicable_disasters: DisasterMode[]

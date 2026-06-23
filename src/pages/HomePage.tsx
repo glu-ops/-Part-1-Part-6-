@@ -9,6 +9,7 @@ import { useShelters } from '../contexts/ShelterContext'
 import { useUser } from '../contexts/UserContext'
 import { useI18n } from '../i18n'
 import { getOverallStatus, walkMinutes } from '../utils/scoring'
+import { getResourceCapacityStatus, getShelterSupportTimes, supportTimeColor, supportTimeLabel } from '../utils/shelterCapacity'
 import { TIME_HORIZON, SIM_LABEL_KEY } from '../disasters'
 import type { Shelter, OverallStatus } from '../types'
 
@@ -18,12 +19,6 @@ const RES = [
   { key: 'medical' as const, Icon: Heart,    labelKey: 'res.medical' },
   { key: 'power' as const,   Icon: Zap,      labelKey: 'res.power' },
 ]
-const RES_COLOR = {
-  green:  'text-status-safe',
-  yellow: 'text-status-caution',
-  red:    'text-status-danger',
-}
-
 function distM(lat: number, lng: number, from: { lat: number; lng: number }): number {
   return Math.round(Math.sqrt((lat - from.lat) ** 2 + (lng - from.lng) ** 2) * 111320)
 }
@@ -81,6 +76,8 @@ export default function HomePage() {
   const selDist = selected ? distM(selected.lat, selected.lng, userLoc) : 0
   const selWalk = selected ? walkMinutes(userLoc.lat, userLoc.lng, selected.lat, selected.lng) : 0
   const selOcc  = selected ? Math.round((selected.capacity.current_estimate / selected.capacity.physical) * 100) : 0
+  const selectedSupportTimes = selected ? getShelterSupportTimes(selected) : null
+  const selectedResourceStatus = selected ? getResourceCapacityStatus(selected) : null
 
   return (
     <div className="fixed inset-0 overflow-hidden">
@@ -123,7 +120,8 @@ export default function HomePage() {
       {selected && selStatus && (
         <div className="absolute z-[500] glass rounded-3xl sheet-enter
           bottom-16 inset-x-2
-          lg:bottom-auto lg:top-1/2 lg:-translate-y-1/2 lg:right-4 lg:left-auto lg:inset-x-auto lg:w-[360px]">
+          max-h-[calc(100vh-7.5rem)] overflow-y-auto no-scrollbar
+          lg:bottom-auto lg:top-1/2 lg:-translate-y-1/2 lg:right-4 lg:left-auto lg:inset-x-auto lg:w-[360px] lg:max-h-[calc(100vh-7rem)]">
           <div className="flex justify-center pt-2 pb-1 lg:hidden">
             <div className="w-10 h-1 rounded-full bg-white/20" />
           </div>
@@ -163,20 +161,45 @@ export default function HomePage() {
                 <Users size={12} className="text-white/50" />
                 <span className="num text-white/85">{selected.capacity.current_estimate}/{selected.capacity.physical}</span>
               </span>
+              <span className="text-white/45">{selected.capacity_people ?? '待補'}</span>
             </div>
 
-            {/* 物資 4 燈 */}
+            {selected.resource_capacity_level && (
+              <div className="mb-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-semibold text-white">{selected.resource_capacity_level} · {selected.overall_role}</span>
+                  <span className="text-[11px] text-white/55">{t(`capacity.hint.${selectedResourceStatus ?? 'unknown'}`)}</span>
+                </div>
+              </div>
+            )}
+
+            {/* 物資支撐時間 */}
             <div className="grid grid-cols-4 gap-2 mb-3">
               {RES.map(({ key, Icon, labelKey }) => {
-                const val = selected.resources[key]
+                const time = selectedSupportTimes?.[key]
                 return (
                   <div key={key} className="flex flex-col items-center gap-1 glass-cell rounded-xl py-2">
-                    <Icon size={15} className={RES_COLOR[val]} />
+                    <Icon size={15} className={supportTimeColor(time)} />
                     <span className="text-[10px] text-white/45">{t(labelKey)}</span>
-                    <span className={`text-[10px] font-semibold ${RES_COLOR[val]}`}>{t(`res.${val}`)}</span>
+                    <span className={`text-[10px] font-semibold ${supportTimeColor(time)}`}>{supportTimeLabel(time, t('common.hours'))}</span>
                   </div>
                 )
               })}
+            </div>
+
+            <div className="space-y-2 mb-3 text-xs">
+              <div className="glass-cell rounded-xl px-3 py-2">
+                <p className="text-white/45 mb-0.5">{t('detail.entranceCapacity')}</p>
+                <p className="text-white/80 line-clamp-2">{selected.entrance_capacity ?? t('detail.unknown')}</p>
+              </div>
+              <div className="glass-cell rounded-xl px-3 py-2">
+                <p className="text-white/45 mb-0.5">{t('detail.physicalCapacity')}</p>
+                <p className="text-white/80 line-clamp-2">{selected.physical_capacity ?? t('detail.unknown')}</p>
+              </div>
+              <div className="glass-cell rounded-xl px-3 py-2">
+                <p className="text-white/45 mb-0.5">{t('detail.suitableUsers')}</p>
+                <p className="text-white/80">{selected.suitable_users ?? t('detail.unknown')}</p>
+              </div>
             </div>
 
             {/* 操作按鈕（膠囊形狀） */}
