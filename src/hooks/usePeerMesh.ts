@@ -100,6 +100,7 @@ export function usePeerMesh({ fixedId, myName, myPos, onSosEvent, onReport, onAn
   const peerRef        = useRef<any>(null)
   const retryTimerRef  = useRef<ReturnType<typeof setTimeout> | undefined>(undefined) // 固定 ID 被占用 → 重試
   const connsRef       = useRef<Map<string, any>>(new Map())
+  const manualDialRef  = useRef<Set<string>>(new Set()) // 使用者手動輸入 ID 撥號中的對象（用於區分背景自動重連）
   const rescueConnRef  = useRef<any>(null)        // B 層往指揮中心的連線（不列入 peers）
   const reportSeenRef  = useRef<Set<string>>(new Set()) // 演變型訊息 msgId 去重（report/sosEvent 共用）
   const greetedRef     = useRef<Set<string>>(new Set()) // 已發過「加入」系統訊息的 peer
@@ -232,13 +233,15 @@ export function usePeerMesh({ fixedId, myName, myPos, onSosEvent, onReport, onAn
   // 內部撥號（重連用：靜默，不顯示錯誤）
   const dialPeer = useCallback((id: string, silent: boolean) => {
     if (!peerRef.current || !id || id === myIdRef.current || connsRef.current.has(id)) return
-    if (!silent) setError(null)
+    // 手動撥號才記錄：peer-unavailable 在 Peer 物件上觸發（與此撥號脫鉤），
+    // 靠這份清單才能分辨「使用者主動連的對象失敗」與「背景自動重連的對象離線」。
+    if (!silent) { setError(null); manualDialRef.current.add(id) }
     try {
       const conn = peerRef.current.connect(id, { reliable: true })
-      if (!conn) { if (!silent) setError('conn-fail'); return }
-      conn.on('open', () => registerRef.current(conn))
-      conn.on('error', () => { if (!silent) setError('conn-fail') })
-    } catch { if (!silent) setError('conn-fail') }
+      if (!conn) { if (!silent) { manualDialRef.current.delete(id); setError('conn-fail') } return }
+      conn.on('open', () => { manualDialRef.current.delete(id); registerRef.current(conn) })
+      conn.on('error', () => { if (!silent) { manualDialRef.current.delete(id); setError('conn-fail') } })
+    } catch { if (!silent) { manualDialRef.current.delete(id); setError('conn-fail') } }
   }, [])
 
   // ── 初始化 Peer ───────────────────────────────────────
@@ -274,6 +277,21 @@ export function usePeerMesh({ fixedId, myName, myPos, onSosEvent, onReport, onAn
           peerRef.current = null
           clearTimeout(retryTimerRef.current)
           retryTimerRef.current = setTimeout(boot, RETRY_MS)
+          return
+        }
+        // peer-unavailable：嘗試撥號的對象目前不在線。本機節點本身正常運作，
+        // 這在「沒人開 /rescue 指揮中心」或「已知聯絡人離線」時屬常態，不該顯示為全域連線錯誤。
+        // 只有當失敗對象正是使用者「手動輸入 ID」連線的目標時，才提示「無法連線」。
+        if (type === 'peer-unavailable') {
+          const m = String(err?.message ?? '').match(/peer\s+(.+)$/i)
+          const targetId = m ? m[1].trim() : ''
+          // 釋放尚未連上的指揮中心 hub 連線參考，讓 30 秒輪詢在 hub 上線後自動補連
+          const rc = rescueConnRef.current
+          if (rc && !rc.open && targetId === RESCUE_CENTER_ID) rescueConnRef.current = null
+          if (targetId && manualDialRef.current.has(targetId)) {
+            manualDialRef.current.delete(targetId)
+            setError('conn-fail')
+          }
           return
         }
         setError(type)
