@@ -77,7 +77,7 @@ export default function ReportCard({ report: r, clientId, onVote, onStatus, comp
       )}
 
       {resolved && r.resolvedNote && (
-        <p className="text-[11px] text-status-safe/80 mt-1 flex items-start gap-1">
+        <p className="text-[11px] text-white/70 mt-1 flex items-start gap-1">
           <ShieldCheck size={12} className="mt-0.5 shrink-0" />{r.resolvedNote}
         </p>
       )}

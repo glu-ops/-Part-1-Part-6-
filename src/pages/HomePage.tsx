@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Droplets, Utensils, Heart, Zap, Navigation, X, Clock, Users, MapPin } from 'lucide-react'
 import ShelterMap from '../components/Map/ShelterMap'
 import MapLegend from '../components/Map/MapLegend'
+import ShelterDetailView from '../components/ShelterCard/ShelterDetailView'
 import RiskPanel from '../components/RiskPanel'
 import StatusBadge from '../components/ShelterCard/StatusBadge'
 import { useShelters } from '../contexts/ShelterContext'
@@ -25,7 +26,7 @@ function distM(lat: number, lng: number, from: { lat: number; lng: number }): nu
 
 // 環形進度圖
 function Ring({ pct, status }: { pct: number; status: OverallStatus }) {
-  const color = status === 'safe' ? '#22c55e' : status === 'caution' ? '#f4b740' : '#ef4444'
+  const color = status === 'safe' ? '#889D73' : status === 'caution' ? '#F5C776' : '#B30303'
   const r = 26
   const c = 2 * Math.PI * r
   return (
@@ -49,6 +50,7 @@ export default function HomePage() {
   const { t } = useI18n()
   const nav = useNavigate()
   const [selected, setSelected] = useState<Shelter | null>(null)
+  const [detailId, setDetailId] = useState<string | null>(null)   // 詳細資料浮層（停留在 / 地圖背景上）
   const [showFacilities, setShowFacilities] = useState(true)   // 淹水：防汛據點圖層開關
   const [showReports, setShowReports] = useState(true)         // 回報圖層開關（所有災害模式）
 
@@ -205,7 +207,7 @@ export default function HomePage() {
             {/* 操作按鈕（膠囊形狀） */}
             <div className="flex gap-2">
               <button
-                onClick={() => nav(`/shelter/${selected.shelter_id}`)}
+                onClick={() => setDetailId(selected.shelter_id)}
                 className="flex-1 glass-cell text-white text-sm rounded-full py-3 font-semibold hover:bg-white/10 transition-colors"
               >
                 {t('home.detail')}
@@ -219,6 +221,11 @@ export default function HomePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 避難所詳細資料浮層：停留在 / 地圖背景上，效果如「發出 SOS 求救」面板 */}
+      {detailId && (
+        <ShelterDetailView shelterId={detailId} variant="modal" onClose={() => setDetailId(null)} />
       )}
     </div>
   )

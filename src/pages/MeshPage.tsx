@@ -33,12 +33,12 @@ function NodeGraph({ peers, t, meLabel }: { peers: PeerInfo[]; t: (k: string) =>
         return (
           <g key={p.id} opacity={on ? 1 : 0.4}>
             <line x1={cx} y1={cy} x2={x} y2={y} stroke="rgba(255,255,255,.35)" strokeWidth="1" strokeDasharray={on ? '0' : '3 2'} />
-            <circle cx={x} cy={y} r="12" fill={on ? 'rgba(249,115,22,.18)' : 'rgba(120,120,120,.15)'} stroke={on ? 'rgba(249,115,22,.8)' : 'rgba(160,160,160,.6)'} strokeWidth="1.5" />
-            <text x={x} y={y + 3} textAnchor="middle" fontSize="7" fill="#f1f2f4">{label}</text>
+            <circle cx={x} cy={y} r="12" fill={on ? 'rgba(245,199,118,.16)' : 'rgba(120,120,120,.15)'} stroke={on ? 'rgba(245,199,118,.75)' : 'rgba(160,160,160,.6)'} strokeWidth="1.5" />
+            <text x={x} y={y + 3} textAnchor="middle" fontSize="7" fill="#F4F1E6">{label}</text>
           </g>
         )
       })}
-      <circle cx={cx} cy={cy} r="15" fill="#3b82f6" />
+      <circle cx={cx} cy={cy} r="15" fill="#315A58" />
       <text x={cx} y={cy + 4} textAnchor="middle" fontSize="8" fill="#fff" fontWeight="700">{meLabel.slice(0, 4)}</text>
       {peers.length === 0 && (
         <text x={cx} y={cy + 34} textAnchor="middle" fontSize="7" fill="rgba(255,255,255,.4)">{t('mesh.noNodes')}</text>
@@ -148,7 +148,7 @@ export default function MeshPage() {
       <div className="glass-cell rounded-2xl p-4">
         <label className="text-xs text-white/45 block mb-2 flex items-center gap-1.5"><UserCircle2 size={13} />{t('mesh.myIdentity')}</label>
         <div className="flex items-center gap-2 mb-2">
-          <span className="w-2 h-2 rounded-full bg-[#3b82f6] shrink-0" />
+          <span className="w-2 h-2 rounded-full bg-[#315A58] shrink-0" />
           <span className="text-white font-semibold text-sm flex-1 truncate">{myName || t('mesh.me')}</span>
           <button onClick={() => { if (window.confirm(t('mesh.logoutConfirm'))) logout() }} title={t('mesh.logout')}
             className="text-white/45 hover:text-status-danger p-1 shrink-0"><LogOut size={14} /></button>
@@ -216,8 +216,8 @@ export default function MeshPage() {
         <MapPin size={14} className="text-white/60" />
         <p className="text-xs text-white/45 uppercase tracking-wider">{t('mesh.mapTitle')}</p>
         <span className="ml-auto flex items-center gap-2 text-[10px] text-white/55 flex-wrap justify-end">
-          <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-[#3b82f6] inline-block" />{myName || t('mesh.me')}</span>
-          <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-[#f97316] inline-block" />{t('mesh.peer')}</span>
+          <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-[#315A58] inline-block" />{myName || t('mesh.me')}</span>
+          <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-[#F5C776] inline-block" />{t('mesh.peer')}</span>
           <span className="text-white/35">|</span>
           <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full inline-block" style={{ background: PRIORITY_COLOR.high, boxShadow: `0 0 5px ${PRIORITY_COLOR.high}` }} />{t('sos.prio.high')}</span>
           <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full inline-block" style={{ background: PRIORITY_COLOR.medium, boxShadow: `0 0 5px ${PRIORITY_COLOR.medium}` }} />{t('sos.prio.medium')}</span>
@@ -354,7 +354,7 @@ export default function MeshPage() {
 
       {/* F2.7-G 附近橫幅 */}
       {bannerPeer && (
-        <div className="glass rounded-2xl px-4 py-3 mb-3 text-sm text-white flex items-center justify-between gap-2 border border-orange-400/40">
+        <div className="glass rounded-2xl px-4 py-3 mb-3 text-sm text-white flex items-center justify-between gap-2 border border-status-caution/35">
           <span className="flex items-center gap-2"><MapPin size={15} className="text-white/70" />
             {t('mesh.nearbyBanner', { id: bannerPeer.name || bannerPeer.id.slice(0, 6), d: distanceMeters(userLoc, { lat: bannerPeer.lat!, lng: bannerPeer.lng! }) })}</span>
           <button onClick={() => setDismissed(prev => new Set(prev).add(bannerPeer.id))} className="text-white/60 hover:text-white shrink-0"><X size={15} /></button>

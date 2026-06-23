@@ -4,9 +4,9 @@ import { useI18n } from '../../i18n'
 import type { Shelter, OverallStatus } from '../../types'
 
 const STATUS_COLOR: Record<OverallStatus, string> = {
-  safe:    '#22c55e',
-  caution: '#f4b740',
-  danger:  '#ef4444',
+  safe:    '#889D73',
+  caution: '#F5C776',
+  danger:  '#B30303',
 }
 
 /**
@@ -14,7 +14,7 @@ const STATUS_COLOR: Record<OverallStatus, string> = {
  * 節點核心顏色用紅黃綠代表安全狀態（地圖上唯一彩色元素）。
  */
 function makeIcon(status: OverallStatus, notSuitable: boolean, physical: number): L.DivIcon {
-  const color = notSuitable ? '#9ca3af' : STATUS_COLOR[status]
+  const color = notSuitable ? '#8A8D84' : STATUS_COLOR[status]
   // 容量 → 光暈直徑（28 ~ 72px）
   const halo = Math.round(28 + Math.min(1, physical / 400) * 44)
   const core = notSuitable ? 12 : 16
@@ -68,7 +68,7 @@ export default function ShelterMarker({ shelter: s, status, notSuitable, onClick
         <div style={{ fontFamily: 'inherit', fontSize: 12, minWidth: 140 }}>
           <div style={{ fontWeight: 700, marginBottom: 2 }}>{s.name}</div>
           {notSuitable
-            ? <span style={{ color: '#9ca3af' }}>⚠ {t('common.notApplicable')}</span>
+            ? <span style={{ color: '#8A8D84' }}>⚠ {t('common.notApplicable')}</span>
             : <>
                 <div>{t('home.occupancy')}：{s.capacity.current_estimate}/{s.capacity.physical}（{occ}%）</div>
                 <div>{t('detail.endurance')}：{s.endurance_hours}{t('common.hours')}</div>

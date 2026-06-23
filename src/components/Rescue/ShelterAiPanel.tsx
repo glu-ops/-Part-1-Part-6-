@@ -132,7 +132,7 @@ export default function ShelterAiPanel() {
           <button
             onClick={() => setMonitorOn(v => !v)}
             className={`text-xs font-semibold rounded-full px-3 py-1.5 flex items-center gap-1.5 transition-colors ${
-              monitorOn ? 'bg-status-safe/20 text-status-safe' : 'glass-cell text-white/55'}`}>
+              monitorOn ? 'bg-white/10 text-white/75' : 'glass-cell text-white/55'}`}>
             <Radio size={11} className={monitorOn ? 'animate-pulse' : ''} />
             {monitorOn ? '監測中' : '已暫停'}
           </button>

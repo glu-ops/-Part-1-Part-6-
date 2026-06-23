@@ -3,7 +3,7 @@ import { ShieldAlert, ChevronDown, CloudRain } from 'lucide-react'
 import { useUser } from '../contexts/UserContext'
 import { useI18n } from '../i18n'
 import { assessAllZones, RISK_COLOR, hazardLive } from '../utils/risk'
-import { rainWarnLevel } from '../flood'
+import { rainWarnLevel, FLOOD_RISK_COLOR } from '../flood'
 import { formatReasons } from './Map/RiskOverlay'
 
 /** 區域風險評估面板（地震/淹水模式）：依分數排序列出各區域等級與原因 */
@@ -14,11 +14,14 @@ export default function RiskPanel() {
   const risks = useMemo(() => assessAllZones(disaster), [disaster])
 
   // 淹水模式：南區站官方累積雨量警戒（一級 / 二級）
-  const warn = disaster === 'flood' ? rainWarnLevel(hazardLive.flood) : { level: 'none' as const }
+  const floodMode = disaster === 'flood'
+  const warn = floodMode ? rainWarnLevel(hazardLive.flood) : { level: 'none' as const }
+  // 淹水＝藍色語言（與圖例「區域淹水風險」一致）；地震維持紅/黃/綠
+  const palette = floodMode ? FLOOD_RISK_COLOR : RISK_COLOR
 
   if (risks.length === 0) return null
   const alert = risks.filter(r => r.level === 'high' || r.level === 'danger').length
-  const warnColor = warn.level === 'l1' ? '#ef4444' : '#f4b740'
+  const warnColor = warn.level === 'l1' ? FLOOD_RISK_COLOR.high : FLOOD_RISK_COLOR.caution
 
   return (
     <div className="w-full">
@@ -43,7 +46,7 @@ export default function RiskPanel() {
         <ShieldAlert size={15} className="text-white/80" />
         <span className="font-semibold">{t('risk.title')}</span>
         {alert > 0 && (
-          <span className="text-[10px] bg-status-danger text-white rounded-full px-2 py-0.5 num">{alert}</span>
+          <span className="text-[10px] text-white rounded-full px-2 py-0.5 num" style={{ background: floodMode ? FLOOD_RISK_COLOR.high : '#B30303' }}>{alert}</span>
         )}
         <ChevronDown size={14} className={`ml-auto text-white/55 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -52,20 +55,23 @@ export default function RiskPanel() {
         <div className="glass rounded-2xl mt-2 p-2 max-h-[52vh] overflow-y-auto no-scrollbar">
           <p className="text-[10px] text-white/40 px-2 pb-1.5">{t('risk.panelHint')}</p>
           <div className="space-y-1.5">
-            {risks.map(r => (
+            {risks.map(r => {
+              // 淹水「危險」最深藏青當文字對比過低 → 文字亮一階（圓點仍與圖例相同）
+              const textColor = floodMode && r.level === 'danger' ? FLOOD_RISK_COLOR.high : palette[r.level]
+              return (
               <div key={r.zone.id} className="glass-cell rounded-xl px-2.5 py-2">
                 <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: RISK_COLOR[r.level], boxShadow: `0 0 8px ${RISK_COLOR[r.level]}` }} />
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: palette[r.level], boxShadow: `0 0 8px ${palette[r.level]}` }} />
                   <span className="text-sm text-white/90 font-medium">{r.zone.name}</span>
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold"
-                    style={{ background: RISK_COLOR[r.level] + '33', color: RISK_COLOR[r.level] }}>
+                    style={{ background: palette[r.level] + '33', color: textColor }}>
                     {t(`risk.level.${r.level}`)}
                   </span>
                   <span className="ml-auto text-[11px] text-white/45 num">{r.score}</span>
                 </div>
                 <p className="text-[11px] text-white/60 mt-1 pl-[18px]">{formatReasons(r.reasons, t) || t('risk.noReason')}</p>
               </div>
-            ))}
+            )})}
           </div>
         </div>
       )}

@@ -56,13 +56,13 @@ export const COMMAND_STATUS_FLOW: SosStatus[] = ['received', 'processing', 'help
 
 // ── 優先級樣式（地圖光環 + 徽章顏色）──
 export const PRIORITY_COLOR: Record<SosPriority, string> = {
-  high:   '#ef4444',  // 紅
-  medium: '#f59e0b',  // 琥珀
-  low:    '#38bdf8',  // 藍
+  high:   '#B30303',  // system red
+  medium: '#F5C776',  // yellow
+  low:    '#38bdf8',  // blue
 }
 export const PRIORITY_BADGE: Record<SosPriority, string> = {
   high:   'bg-status-danger/25 text-status-danger',
-  medium: 'bg-amber-500/25 text-amber-300',
+  medium: 'bg-status-caution/20 text-status-caution',
   low:    'bg-sky-500/25 text-sky-300',
 }
 

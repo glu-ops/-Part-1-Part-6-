@@ -20,8 +20,8 @@ const meIcon = L.divIcon({
   className: '',
   html: `<div style="
     width:16px;height:16px;border-radius:50%;
-    background:#3b82f6;border:3px solid rgba(255,255,255,.95);
-    box-shadow:0 0 0 4px rgba(59,130,246,.25), 0 0 14px rgba(59,130,246,.7);
+    background:#315A58;border:3px solid rgba(255,255,255,.95);
+    box-shadow:0 0 0 4px rgba(240,240,208,.18), 0 0 14px rgba(240,240,208,.45);
   "></div>`,
   iconSize: [16, 16],
   iconAnchor: [8, 8],
@@ -32,10 +32,10 @@ function peerIcon(flashing: boolean) {
   return L.divIcon({
     className: '',
     html: `<div style="position:relative;width:16px;height:16px;">
-      ${flashing ? '<span class="animate-ping" style="position:absolute;inset:-6px;border-radius:50%;background:rgba(249,115,22,.55);"></span>' : ''}
+      ${flashing ? '<span class="animate-ping" style="position:absolute;inset:-6px;border-radius:50%;background:rgba(179,3,3,.45);"></span>' : ''}
       <div style="position:absolute;inset:0;border-radius:50%;
-        background:#f97316;border:3px solid rgba(255,255,255,.95);
-        box-shadow:0 0 0 4px rgba(249,115,22,.22), 0 0 12px rgba(249,115,22,.65);"></div>
+        background:#F5C776;border:3px solid rgba(255,255,255,.95);
+        box-shadow:0 0 0 4px rgba(245,199,118,.20), 0 0 12px rgba(245,199,118,.45);"></div>
     </div>`,
     iconSize: [16, 16],
     iconAnchor: [8, 8],

@@ -25,7 +25,7 @@ const TINT: Record<Notice['kind'], string> = {
   'announce': 'text-status-caution',
 }
 // 公告依重要程度上色（緊急＝紅、注意＝黃、一般＝藍白）
-const ANNOUNCE_TINT = { info: 'text-sky-300', warning: 'text-status-caution', critical: 'text-status-danger' }
+const ANNOUNCE_TINT = { info: 'text-white/65', warning: 'text-status-caution', critical: 'text-status-danger' }
 
 /** 回報 / SOS 動態通知中心（Header 鈴鐺 + 下拉面板，點擊可定位地圖） */
 export default function NotificationBell() {

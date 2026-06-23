@@ -6,9 +6,10 @@ export default {
       colors: {
         // 唯一彩色元素：避難所狀態
         status: {
-          safe: '#22c55e',
-          caution: '#f4b740',
-          danger: '#ef4444',
+          safe: '#889D73',
+          caution: '#F5C776',
+          danger: '#B30303',
+          darkRed: '#2D0E0E',
         },
       },
       fontFamily: {

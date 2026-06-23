@@ -12,7 +12,7 @@ const SENSORS = (sensorData.sensors as FloodSensor[])
 
 // 感測器圖示：水滴外框 + 依水深級距填色（無讀數時灰色中空）
 function sensorIcon(color: string | null, cm: number): L.DivIcon {
-  const c = color ?? '#94a3b8'
+  const c = color ?? '#8A8D84'
   return L.divIcon({
     className: '',
     html: `<div style="display:flex;flex-direction:column;align-items:center;">
@@ -47,7 +47,7 @@ export default function FloodSensorOverlay() {
                 <p className="text-[10px] text-white/45 uppercase tracking-wider mb-0.5">{t('flood.sensor')}</p>
                 <p className="font-bold text-sm">{s.name}</p>
                 <p className="text-xs mt-1">
-                  <span className="font-semibold" style={{ color: band?.color === '#1e3a8a' ? '#93c5fd' : (band?.color ?? '#94a3b8') }}>
+                  <span className="font-semibold" style={{ color: band?.color === '#1e3a8a' ? '#93c5fd' : (band?.color ?? '#8A8D84') }}>
                     {t('flood.depthNow')} {cm} cm
                   </span>
                 </p>

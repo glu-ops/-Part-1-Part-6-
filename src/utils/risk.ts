@@ -34,7 +34,7 @@ export interface ZoneRisk {
 }
 
 export const RISK_COLOR: Record<RiskLevel, string> = {
-  low: '#22c55e', caution: '#f4b740', high: '#f97316', danger: '#ef4444',
+  low: '#889D73', caution: '#F5C776', high: '#F5C776', danger: '#B30303',
 }
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v))

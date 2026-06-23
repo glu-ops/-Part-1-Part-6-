@@ -32,11 +32,11 @@ function quakeStyle(risk: number, t: number): L.PathOptions {
   const thr = quakeThreshold(t)
   if (risk >= thr) {
     // 倒塌 / 嚴重受損
-    return { color: '#fecaca', weight: 1.1, fillColor: '#ef4444', fillOpacity: 0.62, opacity: 0.95 }
+    return { color: '#2D0E0E', weight: 1.1, fillColor: '#B30303', fillOpacity: 0.62, opacity: 0.95 }
   }
   if (risk >= thr - 0.1) {
     // 高風險（受損中）
-    return { color: '#fed7aa', weight: 0.9, fillColor: '#f97316', fillOpacity: 0.34, opacity: 0.85 }
+    return { color: '#F5C776', weight: 0.9, fillColor: '#F5C776', fillOpacity: 0.34, opacity: 0.85 }
   }
   return BASE
 }
