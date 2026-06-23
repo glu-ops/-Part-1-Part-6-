@@ -38,9 +38,11 @@ interface Props {
   onSelect: (s: Shelter) => void
   /** 淹水模式：是否顯示防汛據點圖層（由圖例開關控制） */
   showFacilities?: boolean
+  /** 是否顯示群眾回報圖層（由圖例開關控制，所有災害模式適用） */
+  showReports?: boolean
 }
 
-export default function ShelterMap({ onSelect, showFacilities = true }: Props) {
+export default function ShelterMap({ onSelect, showFacilities = true, showReports = true }: Props) {
   const { shelters } = useShelters()
   const { disaster, userLoc, locating, geoError, locateMe } = useUser()
   const { target } = useFocus()
@@ -81,7 +83,7 @@ export default function ShelterMap({ onSelect, showFacilities = true }: Props) {
         <RiskOverlay />
         {showFacilities && <FloodFacilityOverlay />}
         <FloodSensorOverlay />
-        <ReportOverlay focus={reportFocus} />
+        {showReports && <ReportOverlay focus={reportFocus} />}
 
         <Marker position={[userLoc.lat, userLoc.lng]} icon={userIcon} />
 

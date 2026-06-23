@@ -60,6 +60,7 @@ export default function HomePage() {
   const [selected, setSelected] = useState<Shelter | null>(null)
   const [legendOpen, setLegendOpen] = useState(true)
   const [showFacilities, setShowFacilities] = useState(true)   // 淹水：防汛據點圖層開關
+  const [showReports, setShowReports] = useState(true)         // 回報圖層開關（所有災害模式）
 
   // 切換災害時重置時間軸（各災害時間尺度不同）
   useEffect(() => { setTimeOffset(0) }, [disaster, setTimeOffset])
@@ -97,7 +98,7 @@ export default function HomePage() {
   return (
     <div className="fixed inset-0 overflow-hidden">
       {/* 地圖背景（滿版，浮層 UI 疊於其上） */}
-      <ShelterMap onSelect={setSelected} showFacilities={showFacilities} />
+      <ShelterMap onSelect={setSelected} showFacilities={showFacilities} showReports={showReports} />
 
       {/* 災害警告列（浮動 chip）— 行動版下移避免蓋到搜尋列 */}
       {dangerCount > 0 && (
@@ -235,10 +236,15 @@ export default function HomePage() {
                 <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-white/90" style={{ boxShadow: '0 0 8px rgba(255,255,255,.6)' }} />
                 <span>{t('home.legendMine')}</span>
               </div>
-              <div className="flex items-center gap-2 text-[11px] text-white/70">
+              {/* 回報圖層：可勾選開關（所有災害模式） */}
+              <button onClick={() => setShowReports(v => !v)}
+                className="flex items-center gap-2 w-full text-[11px] text-white/70">
+                <span className={`flex items-center justify-center flex-shrink-0 rounded-[3px] border ${showReports ? 'bg-white/80 border-white/80' : 'border-white/40'}`} style={{ width: 11, height: 11 }}>
+                  {showReports && <Check size={8} className="text-neutral-900" strokeWidth={3.5} />}
+                </span>
                 <span className="w-2.5 h-2.5 flex-shrink-0 bg-white/70 rotate-45" />
-                <span>{t('home.legendReport')}</span>
-              </div>
+                <span className={showReports ? '' : 'opacity-50'}>{t('home.legendReport')}</span>
+              </button>
             </div>
           </div>
         )}
