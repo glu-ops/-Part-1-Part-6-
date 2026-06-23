@@ -21,20 +21,44 @@ const SFX = profileSuffix()
 
 const ID_KEY = `guardian_peer_id${SFX}`
 const NAME_KEY = `guardian_name${SFX}`
-const PEERS_KEY = `guardian_known_peers${SFX}`
+const ACCOUNTS_KEY = `guardian_accounts${SFX}`
+// 聯絡人（已知對象）依「帳號 ID」分開存：登入同一帳號就帶回該帳號的聯絡人。
+const peersKey = (ownerId: string) => `guardian_known_peers${SFX}__${ownerId}`
 
 // 指揮中心保留 ID，使用者不可佔用
 const RESERVED_ID = 'tainan-guardian-rescue'
 
-/** 固定節點 ID（首次產生後存於 localStorage，關閉重開仍不變）。 */
-export function getPersistentId(): string {
-  let id = localStorage.getItem(ID_KEY)
-  if (!id) {
-    // PeerJS 合法字元：英數與 -，這裡用 tng- 前綴 + 隨機碼
-    id = `tng-${Math.random().toString(36).slice(2, 8)}${Date.now().toString(36).slice(-4)}`
-    localStorage.setItem(ID_KEY, id)
+/**
+ * 已登入的帳號 ID（存於 localStorage）。未登入回傳空字串。
+ * ID 即帳號：在其他裝置用同一組 ID 登入即視為同一人。不再自動產生 —
+ * 一律由使用者在登入時指定（見 NameGate / IdentityContext.login）。
+ */
+export function getStoredId(): string {
+  return localStorage.getItem(ID_KEY) ?? ''
+}
+
+/** 登出：清除目前帳號 ID 與名稱（聊天/通知以 ID 為 key 保留，重新登入同一 ID 可復原）。 */
+export function clearIdentity(): void {
+  localStorage.removeItem(ID_KEY)
+  localStorage.removeItem(NAME_KEY)
+}
+
+/**
+ * 本機重置：清除這台裝置上所有帳號相關資料（登入紀錄、目前身分、PIN 快取、
+ * 聊天、通知、聯絡人）。後端帳號表不受影響。此動作無法復原。
+ */
+export function resetAllLocal(): void {
+  const keys: string[] = []
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i)
+    if (k && k.startsWith('guardian')) keys.push(k)
   }
-  return id
+  keys.forEach(k => localStorage.removeItem(k))
+}
+
+/** 產生一組建議帳號 ID（合法、隨機、好打），供「新增帳號」一鍵填入、降低撞號。 */
+export function suggestId(): string {
+  return `u-${Math.random().toString(36).slice(2, 7)}`
 }
 
 /** 把使用者輸入清成 PeerJS 合法 ID（小寫英數與 - _，長度上限）。不合法回傳空字串。 */
@@ -57,14 +81,45 @@ export function setNameStored(name: string): void {
   localStorage.setItem(NAME_KEY, name.trim())
 }
 
+// ── 這台裝置登入過的帳號（供登入頁一鍵登入，避免手打 ID 打錯變成新帳號）──
+export interface Account {
+  id: string
+  name: string
+}
+
+export function getAccounts(): Account[] {
+  try {
+    const raw = localStorage.getItem(ACCOUNTS_KEY)
+    if (!raw) return []
+    const arr = JSON.parse(raw)
+    return Array.isArray(arr) ? arr.filter(a => a && typeof a.id === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+/** 記住一個登入過的帳號（移到最前、依 id 去重、最多 8 筆）。 */
+export function rememberAccount(acc: Account): void {
+  const list = getAccounts().filter(a => a.id !== acc.id)
+  list.unshift(acc)
+  localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(list.slice(0, 8)))
+}
+
+/** 從「最近帳號」清單移除一筆（僅移除快捷入口，不刪該帳號的聊天/聯絡人）。 */
+export function forgetAccount(id: string): void {
+  localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(getAccounts().filter(a => a.id !== id)))
+}
+
+// ── 聯絡人（已知對象）：依帳號 ID 分開儲存 ──
 export interface KnownPeer {
   id: string
   name: string
 }
 
-export function getKnownPeers(): KnownPeer[] {
+export function getKnownPeers(ownerId: string): KnownPeer[] {
+  if (!ownerId) return []
   try {
-    const raw = localStorage.getItem(PEERS_KEY)
+    const raw = localStorage.getItem(peersKey(ownerId))
     if (!raw) return []
     const arr = JSON.parse(raw)
     return Array.isArray(arr) ? arr.filter(p => p && typeof p.id === 'string') : []
@@ -73,16 +128,18 @@ export function getKnownPeers(): KnownPeer[] {
   }
 }
 
-/** 新增/更新一筆已知對象（依 id 去重，名字以最新為準）。 */
-export function saveKnownPeer(peer: KnownPeer): void {
-  const list = getKnownPeers()
+/** 新增/更新一筆已知對象（屬於 ownerId 帳號；依 id 去重，名字以最新為準）。 */
+export function saveKnownPeer(ownerId: string, peer: KnownPeer): void {
+  if (!ownerId) return
+  const list = getKnownPeers(ownerId)
   const i = list.findIndex(p => p.id === peer.id)
   if (i === -1) list.push(peer)
   else list[i] = { ...list[i], ...peer }
-  localStorage.setItem(PEERS_KEY, JSON.stringify(list))
+  localStorage.setItem(peersKey(ownerId), JSON.stringify(list))
 }
 
-export function removeKnownPeer(id: string): void {
-  const list = getKnownPeers().filter(p => p.id !== id)
-  localStorage.setItem(PEERS_KEY, JSON.stringify(list))
+export function removeKnownPeer(ownerId: string, id: string): void {
+  if (!ownerId) return
+  const list = getKnownPeers(ownerId).filter(p => p.id !== id)
+  localStorage.setItem(peersKey(ownerId), JSON.stringify(list))
 }

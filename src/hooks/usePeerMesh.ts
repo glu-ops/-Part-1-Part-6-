@@ -83,7 +83,7 @@ export function usePeerMesh({ fixedId, myName, myPos, onSosEvent, onReport, getS
   const [error, setError]     = useState<string | null>(null)
   // 市民端：以已知對象清單初始化（離線灰顯，待自動重連）。指揮中心：空白。
   const [peers, setPeers]     = useState<PeerInfo[]>(() =>
-    isRescue ? [] : getKnownPeers().map(p => ({ id: p.id, name: p.name, connectedAt: '', online: false })),
+    isRescue ? [] : getKnownPeers(fixedId ?? '').map(p => ({ id: p.id, name: p.name, connectedAt: '', online: false })),
   )
   // 聊天訊息持久化（localStorage：關閉分頁重開仍保留；以節點 ID 為 key 區分身份）
   const chatKey = `guardian_chat_${fixedId ?? 'anon'}`
@@ -156,7 +156,7 @@ export function usePeerMesh({ fixedId, myName, myPos, onSosEvent, onReport, getS
     if (msg.type === 'profile') {
       const name = msg.senderName || fromId.slice(0, 6)
       upsertPeer(fromId, { name, online: true })
-      if (!isRescue) saveKnownPeer({ id: fromId, name })
+      if (!isRescue && fixedId) saveKnownPeer(fixedId, { id: fromId, name })
       if (!greetedRef.current.has(fromId)) {
         greetedRef.current.add(fromId)
         pushSystem(`${name} 已加入連線`)
@@ -236,26 +236,33 @@ export function usePeerMesh({ fixedId, myName, myPos, onSosEvent, onReport, getS
 
     const boot = () => {
       if (cancelled || peerRef.current || !PeerCtor) return
-      const peer = fixedId ? new PeerCtor(fixedId) : new PeerCtor()
+      // 未登入（無固定 ID）→ 不啟動節點，避免產生丟棄式的隨機身分
+      if (!fixedId) { setLoading(false); return }
+      const peer = new PeerCtor(fixedId)
       peerRef.current = peer
       peer.on('open', (id: string) => {
         myIdRef.current = id; setMyId(id); setLoading(false); setError(null)
         if (!isRescue) {
-          getKnownPeers().forEach(p => dialPeer(p.id, true))  // 自動重連已知對象
+          getKnownPeers(fixedId).forEach(p => dialPeer(p.id, true))  // 自動重連此帳號的已知對象
           ensureRescueRef.current()                            // 主動連指揮中心 hub
         }
       })
       peer.on('error', (err: any) => {
         const type = err?.type ?? err?.message ?? 'peer-error'
-        setError(type)
-        setLoading(false)
-        // 固定 ID 被占用 → 銷毀後排程重試（直到搶回為止）
+        // 固定 ID 被占用：通常是前一個同 ID 節點剛斷線、broker 尚未釋放（約 30–60 秒），
+        // 或 dev 模式 StrictMode 重複掛載所致。程式會自動重試搶回，期間以「連線中」呈現，
+        // 不顯示為錯誤以免誤導使用者。
         if (type === 'unavailable-id' && fixedId && !cancelled) {
+          setError(null)
+          setLoading(true)
           try { peer.destroy() } catch { /* ignore */ }
           peerRef.current = null
           clearTimeout(retryTimerRef.current)
           retryTimerRef.current = setTimeout(boot, RETRY_MS)
+          return
         }
+        setError(type)
+        setLoading(false)
       })
       peer.on('disconnected', () => { try { peer.reconnect() } catch { /* ignore */ } })
       peer.on('connection', (conn: any) => registerRef.current(conn))

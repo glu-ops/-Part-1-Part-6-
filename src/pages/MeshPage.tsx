@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Radio, Copy, Send, AlertOctagon, Wifi, WifiOff, ShieldCheck, Home, HelpCircle, X, MapPin, UserCircle2, Plus } from 'lucide-react'
+import { Radio, Copy, Send, AlertOctagon, Wifi, WifiOff, ShieldCheck, Home, HelpCircle, X, MapPin, UserCircle2, Plus, LogOut } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { useUser } from '../contexts/UserContext'
 import { useShelters } from '../contexts/ShelterContext'
@@ -51,7 +51,7 @@ export default function MeshPage() {
   const { t } = useI18n()
   const { userLoc } = useUser()
   const { shelters } = useShelters()
-  const { name: myName } = useIdentity()
+  const { name: myName, logout } = useIdentity()
 
   const [targetId, setTargetId] = useState('')
   const [input, setInput]       = useState('')
@@ -150,6 +150,8 @@ export default function MeshPage() {
         <div className="flex items-center gap-2 mb-2">
           <span className="w-2 h-2 rounded-full bg-[#3b82f6] shrink-0" />
           <span className="text-white font-semibold text-sm flex-1 truncate">{myName || t('mesh.me')}</span>
+          <button onClick={() => { if (window.confirm(t('mesh.logoutConfirm'))) logout() }} title={t('mesh.logout')}
+            className="text-white/45 hover:text-status-danger p-1 shrink-0"><LogOut size={14} /></button>
         </div>
         {loading ? (
           <p className="text-white/45 text-sm animate-pulse">{t('mesh.connecting')}</p>
