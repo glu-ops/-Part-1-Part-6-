@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, FilePlus2, Inbox, Loader2, AlertOctagon, HeartHandshake, ShieldCheck, MapPin, User } from 'lucide-react'
+import { Bell, FilePlus2, Inbox, Loader2, AlertOctagon, HeartHandshake, ShieldCheck, MapPin, User, Megaphone } from 'lucide-react'
 import { useMesh } from '../contexts/MeshContext'
 import { useFocus } from '../contexts/FocusContext'
 import { useI18n } from '../i18n'
@@ -13,6 +13,7 @@ const ICON: Record<Notice['kind'], typeof Bell> = {
   'sos-status': Loader2,
   'sos-reply': HeartHandshake,
   'sos-safe': ShieldCheck,
+  'announce': Megaphone,
 }
 const TINT: Record<Notice['kind'], string> = {
   'report-new': 'text-white/70',
@@ -21,7 +22,10 @@ const TINT: Record<Notice['kind'], string> = {
   'sos-status': 'text-status-caution',
   'sos-reply': 'text-status-safe',
   'sos-safe': 'text-status-safe',
+  'announce': 'text-status-caution',
 }
+// 公告依重要程度上色（緊急＝紅、注意＝黃、一般＝藍白）
+const ANNOUNCE_TINT = { info: 'text-sky-300', warning: 'text-status-caution', critical: 'text-status-danger' }
 
 /** 回報 / SOS 動態通知中心（Header 鈴鐺 + 下拉面板，點擊可定位地圖） */
 export default function NotificationBell() {
@@ -79,10 +83,11 @@ export default function NotificationBell() {
             notices.map(n => {
               const Icon = ICON[n.kind]
               const clickable = n.refId != null && n.lat != null
+              const tint = n.kind === 'announce' ? (ANNOUNCE_TINT[n.level ?? 'info']) : TINT[n.kind]
               return (
                 <button key={n.id} onClick={() => onClickNotice(n)} disabled={!clickable}
                   className={`w-full text-left flex items-start gap-2 px-3 py-2.5 border-b border-white/5 ${clickable ? 'hover:bg-white/5 cursor-pointer' : 'cursor-default'}`}>
-                  <Icon size={14} className={`mt-0.5 shrink-0 ${TINT[n.kind]}`} />
+                  <Icon size={14} className={`mt-0.5 shrink-0 ${tint}`} />
                   <div className="min-w-0 flex-1">
                     <p className="text-xs text-white/90 leading-snug font-medium">{n.text}</p>
                     {/* 詳細：類型 · 狀態 / 回報者 / 最新內容 / 位置 */}

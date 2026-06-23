@@ -126,3 +126,14 @@ export interface SosEvent {
   safeBySelf?: boolean         // 求救者本人標記「已安全」（status='safe'）
   version: number              // Mesh / 後端版本號（演變時遞增）
 }
+
+// ── 指揮中心廣播公告：由 /rescue 推送給全體市民（新聞、災情演變等單向通知）──
+export type AnnounceLevel = 'info' | 'warning' | 'critical'
+
+export interface Announcement {
+  id: string                   // 穩定 ID（去重用：同一則公告只顯示一次）
+  level: AnnounceLevel         // 重要程度（一般 / 注意 / 緊急），決定樣式
+  text: string                 // 公告內容
+  ts: number                   // 發布時間
+  from: string                 // 發布單位名稱（指揮中心）
+}

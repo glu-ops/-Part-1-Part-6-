@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { LatLng } from '../utils/geo'
-import type { CrowdReport, SosEvent, SosLayer } from '../types'
+import type { CrowdReport, SosEvent, SosLayer, Announcement } from '../types'
 import { getKnownPeers, saveKnownPeer } from '../utils/identity'
 
 // F2.7-E：寫死的救災指揮中心節點 ID（/rescue 用此 ID 起 Peer）
@@ -12,7 +12,7 @@ export const SOS_TTL = 6
 // 位置共享更新頻率（F2.7-A）
 const POS_INTERVAL_MS = 30_000
 
-export type MeshMsgType = 'text' | 'quick' | 'sos' | 'position' | 'report' | 'profile' | 'system' | 'sosEvent'
+export type MeshMsgType = 'text' | 'quick' | 'sos' | 'position' | 'report' | 'profile' | 'system' | 'sosEvent' | 'announce'
 export type { SosLayer }
 
 export interface MeshMessage {
@@ -32,6 +32,7 @@ export interface MeshMessage {
   version?: number
   report?: CrowdReport
   sos?: SosEvent
+  announce?: Announcement   // 指揮中心廣播公告（type==='announce'）
 }
 
 export interface PeerInfo {
@@ -55,6 +56,8 @@ interface Options {
   onSosEvent?: (s: SosEvent, fromPeerId: string) => void
   /** 收到回報（新／演變版）→ 合併進本地 store */
   onReport?: (r: CrowdReport, fromPeerId: string) => void
+  /** 收到指揮中心廣播公告 → 顯示通知 / toast */
+  onAnnounce?: (a: Announcement, fromPeerId: string) => void
   /** 新連線建立時要推送給對方的同步訊息（未結案 SOS 等），達成重連同步 */
   getSyncMessages?: () => MeshMessage[]
 }
@@ -75,7 +78,7 @@ function genId(): string {
  *   A 私人（已連線 peer）/ B 公共（寫死指揮中心）/ C 廣播（msgId 去重 + TTL 接力，並送指揮中心）。
  * - 指揮中心可沿原連線回覆（sendTo）。
  */
-export function usePeerMesh({ fixedId, myName, myPos, onSosEvent, onReport, getSyncMessages }: Options = {}) {
+export function usePeerMesh({ fixedId, myName, myPos, onSosEvent, onReport, onAnnounce, getSyncMessages }: Options = {}) {
   const isRescue = fixedId === RESCUE_CENTER_ID
 
   const [myId, setMyId]       = useState('')
@@ -105,6 +108,7 @@ export function usePeerMesh({ fixedId, myName, myPos, onSosEvent, onReport, getS
   const myIdRef        = useRef('')
   const onSosEventRef  = useRef(onSosEvent)
   const onReportRef    = useRef(onReport)
+  const onAnnounceRef  = useRef(onAnnounce)
   const syncRef        = useRef(getSyncMessages)
   const registerRef    = useRef<(conn: any) => void>(() => {})
   const ensureRescueRef = useRef<() => void>(() => {})  // 市民端主動連指揮中心 hub
@@ -113,6 +117,7 @@ export function usePeerMesh({ fixedId, myName, myPos, onSosEvent, onReport, getS
   useEffect(() => { myNameRef.current = myName ?? '' }, [myName])
   useEffect(() => { onSosEventRef.current = onSosEvent }, [onSosEvent])
   useEffect(() => { onReportRef.current = onReport }, [onReport])
+  useEffect(() => { onAnnounceRef.current = onAnnounce }, [onAnnounce])
   useEffect(() => { syncRef.current = getSyncMessages }, [getSyncMessages])
 
   // ── 內部工具 ──────────────────────────────────────────
@@ -181,6 +186,16 @@ export function usePeerMesh({ fixedId, myName, myPos, onSosEvent, onReport, getS
       if (msg.type === 'report' && msg.report) onReportRef.current?.(msg.report, fromId)
       else if (msg.sos) onSosEventRef.current?.(msg.sos, fromId)
       if ((msg.ttl ?? 0) > 1) forward({ ...msg, ttl: (msg.ttl ?? 1) - 1 }, fromId) // 續傳演變（gossip）
+      return
+    }
+
+    // 指揮中心廣播公告：msgId 去重 + ttl 接力（讓未直連 hub 的市民也收得到），單向不回寫
+    if (msg.type === 'announce' && msg.announce) {
+      console.log('[announce] received from', fromId, ':', msg.announce.text)
+      if (msg.msgId && reportSeenRef.current.has(msg.msgId)) return
+      if (msg.msgId) reportSeenRef.current.add(msg.msgId)
+      onAnnounceRef.current?.(msg.announce, fromId)
+      if ((msg.ttl ?? 0) > 1) forward({ ...msg, ttl: (msg.ttl ?? 1) - 1 }, fromId)
       return
     }
 
@@ -367,6 +382,15 @@ export function usePeerMesh({ fixedId, myName, myPos, onSosEvent, onReport, getS
     if (s.layer !== 'A') sendToRescue(m)  // B/C 一併送指揮中心
   }, [sendToAll, sendToRescue, baseMsg])
 
+  // 指揮中心廣播公告給全體市民（hub→所有直連市民，並帶 ttl 讓他們再接力擴散）。
+  const broadcastAnnounce = useCallback((a: Announcement) => {
+    const m = baseMsg({ type: 'announce', eventId: a.id, announce: a, ttl: SOS_TTL })
+    reportSeenRef.current.add(m.msgId)   // 自己不重複處理
+    const open = [...connsRef.current.values()].filter(c => c.open).length
+    console.log('[announce] broadcasting:', a.text, '→ open conns:', open, '/ total:', connsRef.current.size)
+    sendToAll(m)
+  }, [sendToAll, baseMsg])
+
   // F2.8：分享 / 更新回報（含投票、處理結果）。版本遞增、跨節點接力同步。
   const shareReport = useCallback((r: CrowdReport) => {
     const m = baseMsg({ type: 'report', eventId: r.id, version: r.version, report: r, ttl: SOS_TTL })
@@ -379,6 +403,6 @@ export function usePeerMesh({ fixedId, myName, myPos, onSosEvent, onReport, getS
     myId, loading, error, peers, messages,
     connectedCount: peers.filter(p => p.online).length,
     isRescue,
-    connect, sendText, sendQuick, shareSosEvent, sendTo, shareReport,
+    connect, sendText, sendQuick, shareSosEvent, sendTo, shareReport, broadcastAnnounce,
   }
 }

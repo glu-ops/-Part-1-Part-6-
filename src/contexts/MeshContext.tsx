@@ -1,17 +1,18 @@
 import { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import type { ReactNode } from 'react'
-import { AlertOctagon, CheckCircle } from 'lucide-react'
+import { AlertOctagon, CheckCircle, Megaphone } from 'lucide-react'
 import { usePeerMesh } from '../hooks/usePeerMesh'
 import type { MeshMessage } from '../hooks/usePeerMesh'
 import { useSosStore } from '../hooks/useSosStore'
 import { useSosSync } from '../hooks/useSosSync'
+import { useAnnounceSync } from '../hooks/useAnnounceSync'
 import { useShelters } from './ShelterContext'
 import { useUser } from './UserContext'
 import { useIdentity } from './IdentityContext'
 import { useI18n } from '../i18n'
 import { SOS_CATEGORY_META, SCOPE_TO_LAYER } from '../sos'
 import SosComposer from '../components/Sos/SosComposer'
-import type { CrowdReport, SosEvent, SosReply, SosStatus, SosReplyKind } from '../types'
+import type { CrowdReport, SosEvent, SosReply, SosStatus, SosReplyKind, Announcement, AnnounceLevel } from '../types'
 
 type MeshApi = ReturnType<typeof usePeerMesh>
 
@@ -31,10 +32,11 @@ export interface SosComposerPrefill {
 
 export interface Notice {
   id: string
-  kind: 'report-new' | 'report-status' | 'sos-new' | 'sos-status' | 'sos-reply' | 'sos-safe'
+  kind: 'report-new' | 'report-status' | 'sos-new' | 'sos-status' | 'sos-reply' | 'sos-safe' | 'announce'
   text: string                 // 摘要主行
   ts: number
   read: boolean
+  level?: AnnounceLevel        // 公告（kind==='announce'）的重要程度，決定樣式
   // 詳細內容（通知中心展開顯示）
   reporter?: string            // 回報者 / 求救者名稱
   typeLabel?: string           // 回報類型
@@ -87,7 +89,7 @@ export function MeshProvider({ children }: { children: ReactNode }) {
   const reportsRef = useRef(reports)
   reportsRef.current = reports
 
-  const [toast, setToast] = useState<{ kind: 'sos' | 'done'; text: string } | null>(null)
+  const [toast, setToast] = useState<{ kind: 'sos' | 'done' | 'announce'; text: string } | null>(null)
   const [sosFlashId, setSosFlashId] = useState<string | null>(null)
   // 通知持久化（localStorage：關閉分頁重開仍保留；以節點 ID 為 key 區分身份）
   const noticeKey = `guardian_notices_${myId || 'anon'}`
@@ -98,8 +100,13 @@ export function MeshProvider({ children }: { children: ReactNode }) {
     try { localStorage.setItem(noticeKey, JSON.stringify(notices)) } catch { /* 容量不足忽略 */ }
   }, [notices, noticeKey])
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  // 已顯示過的公告 id（去重來源：避免重連時 hub 重播舊公告造成重複通知/toast）。
+  // 以持久化的既有公告通知初始化，重新整理後仍不會重複跳。
+  const annSeenRef = useRef<Set<string>>(
+    new Set(notices.filter(n => n.kind === 'announce' && n.refId).map(n => n.refId as string)),
+  )
 
-  const showToast = useCallback((kind: 'sos' | 'done', text: string) => {
+  const showToast = useCallback((kind: 'sos' | 'done' | 'announce', text: string) => {
     setToast({ kind, text })
     clearTimeout(toastTimer.current)
     toastTimer.current = setTimeout(() => setToast(null), 5000)
@@ -155,6 +162,20 @@ export function MeshProvider({ children }: { children: ReactNode }) {
     }
   }, [sos, addNotice, showToast, t])
 
+  // ── 套用一則公告 → 通知中心 (+toast)。依 id 去重（P2P 與後端輪詢兩來源收斂）。
+  //    補抓既有公告（後端首輪）toast=false：只進通知中心、不洗版跳 toast。──
+  const applyAnnounce = useCallback((a: Announcement, opts?: { toast?: boolean }) => {
+    if (annSeenRef.current.has(a.id)) return
+    annSeenRef.current.add(a.id)
+    addNotice({
+      kind: 'announce', text: a.text, reporter: a.from, level: a.level,
+      statusLabel: t(`announce.level.${a.level}`), refId: a.id,
+    })
+    if (opts?.toast !== false) showToast('announce', a.text)
+  }, [addNotice, showToast, t])
+  // P2P 收到（即時）→ 一律 toast
+  const onAnnounce = useCallback((a: Announcement) => applyAnnounce(a, { toast: true }), [applyAnnounce])
+
   // ── 新連線時推送：未結案 SOS + 進行中回報（讓對方/hub 補齊既有狀態） ──
   const getSyncMessages = useCallback((): MeshMessage[] => {
     const sosMsgs: MeshMessage[] = sos.getOpenEvents().map(e => ({
@@ -172,11 +193,13 @@ export function MeshProvider({ children }: { children: ReactNode }) {
     return [...sosMsgs, ...reportMsgs]
   }, [sos, myId])
 
-  const mesh = usePeerMesh({ fixedId: myId, myName: name, myPos: userLoc, onSosEvent, onReport, getSyncMessages })
+  const mesh = usePeerMesh({ fixedId: myId, myName: name, myPos: userLoc, onSosEvent, onReport, onAnnounce, getSyncMessages })
 
   // 共享資料來源同步（輪詢）：拉他人 SOS 增量 → 走同一套 onSosEvent 合併 / 通知 / 地圖。
   // 任何本機 SOS 動作都會 push 到後端，讓所有 Vercel 使用者同步看到。
   const { push: pushSos } = useSosSync(onSosEvent)
+  // 公告共享後端輪詢：即使 P2P 沒連上、跨 Vercel 使用者也能收到指揮中心公告。
+  useAnnounceSync(applyAnnounce)
 
   // 本機產生新版事件後：同時走 P2P（即時）與共享後端（跨使用者持久同步）。
   // 私人（layer A / private）只發給已連線者 → 不寫入共享後端，避免全站可見。
@@ -247,10 +270,14 @@ export function MeshProvider({ children }: { children: ReactNode }) {
         />
       )}
       {toast && (
-        <div className={`fixed top-16 left-1/2 -translate-x-1/2 z-[2000] glass rounded-full px-4 py-2 text-sm font-semibold flex items-center gap-2 border ${
-          toast.kind === 'sos' ? 'text-status-danger border-status-danger/50 animate-pulse' : 'text-status-safe border-status-safe/40'}`}>
-          {toast.kind === 'sos' ? <AlertOctagon size={16} className="text-status-danger" /> : <CheckCircle size={16} className="text-status-safe" />}
-          {toast.text}
+        <div className={`fixed top-16 left-1/2 -translate-x-1/2 z-[2000] glass rounded-full px-4 py-2 text-sm font-semibold flex items-center gap-2 border max-w-[90vw] ${
+          toast.kind === 'sos' ? 'text-status-danger border-status-danger/50 animate-pulse'
+          : toast.kind === 'announce' ? 'text-status-caution border-status-caution/50'
+          : 'text-status-safe border-status-safe/40'}`}>
+          {toast.kind === 'sos' ? <AlertOctagon size={16} className="text-status-danger shrink-0" />
+            : toast.kind === 'announce' ? <Megaphone size={16} className="text-status-caution shrink-0" />
+            : <CheckCircle size={16} className="text-status-safe shrink-0" />}
+          <span className="truncate">{toast.text}</span>
         </div>
       )}
     </MeshContext.Provider>

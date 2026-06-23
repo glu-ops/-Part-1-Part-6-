@@ -17,11 +17,15 @@ function devApi(): Plugin {
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         if (!req.url || !req.url.startsWith('/api/')) return next()
-        const name = req.url.split('?')[0].replace(/^\/api\//, '').replace(/\/+$/, '')
+        const [path, qs] = req.url.split('?')
+        const name = path.replace(/^\/api\//, '').replace(/\/+$/, '')
         const modPath = resolve(__dirname, 'api', `${name}.ts`)
         if (!name || !existsSync(modPath)) return next()
 
         try {
+          // 補上 Vercel 的 req.query（dev 不會自動解析 query string）
+          ;(req as any).query = Object.fromEntries(new URLSearchParams(qs || ''))
+
           // 讀取並解析 JSON body（後端 readBody 接受 object 或 string）
           const chunks: Buffer[] = []
           for await (const c of req) chunks.push(c as Buffer)
