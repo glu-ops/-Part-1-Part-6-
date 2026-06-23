@@ -1,9 +1,10 @@
 import { createContext, useContext, useState, useMemo, useRef, useCallback } from 'react'
 import type { ReactNode } from 'react'
-import type { Shelter, CrowdReport, HandleStatus } from '../types'
+import type { Shelter, CrowdReport, HandleStatus, ShelterAIStatus, AIReviewStatus, ResourceStatus } from '../types'
 import sheltersData from '../data/shelters.json'
 import reportsData from '../data/reports.json'
 import { enrichShelterWithCapacity } from '../utils/shelterCapacity'
+import { aiStatusIsNewer, assessAbnormal, deriveUrgentNeeds, summarizeReading } from '../utils/shelterAi'
 
 // 處理狀態優先序（合併時取較進階者）
 const STATUS_RANK: Record<HandleStatus, number> = { active: 0, received: 1, handling: 2, resolved: 3 }
@@ -37,6 +38,7 @@ export function getClientId(): string {
 }
 
 const STORE_KEY = 'guardian_reports'
+const AI_KEY = 'guardian_shelter_ai'   // AI 監測狀態本機快取（跨 reload 保留）
 
 function normalize(r: Partial<CrowdReport> & { id: string }): CrowdReport {
   return {
@@ -99,6 +101,15 @@ interface ShelterCtx {
   resolveReport: (id: string, note?: string) => CrowdReport | null
   setReportStatus: (id: string, status: HandleStatus, note?: string) => CrowdReport | null
   setThreadStatus: (threadId: string, status: HandleStatus, note?: string) => CrowdReport[]
+  // ── AI Camera 避難所監測 ──
+  aiStatus: Map<string, ShelterAIStatus>
+  aiAlerts: ShelterAIStatus[]                          // 待指揮中心處理的異常
+  mergeAiStatus: (s: ShelterAIStatus) => boolean       // 合併（模擬 / 同步 / P2P）
+  reviewAiStatus: (
+    shelterId: string,
+    review: AIReviewStatus,
+    opts?: { resources?: ShelterAIStatus['resources']; estimatedCount?: number; note?: string; by?: string },
+  ) => ShelterAIStatus | null                          // 指揮中心確認 / 修正 / 忽略
 }
 
 const ShelterContext = createContext<ShelterCtx | null>(null)
@@ -133,18 +144,123 @@ export function ShelterProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  // ── AI Camera 避難所監測狀態（疊加層）：以 shelterId 為鍵保存最新一筆 ──
+  const [aiStatus, setAiStatus] = useState<Map<string, ShelterAIStatus>>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(AI_KEY) ?? '[]') as ShelterAIStatus[]
+      return new Map(saved.filter(s => s && s.shelterId).map(s => [s.shelterId, s]))
+    } catch { return new Map() }
+  })
+  const aiStatusRef = useRef(aiStatus)
+  aiStatusRef.current = aiStatus
+
+  const persistAi = useCallback((next: Map<string, ShelterAIStatus>) => {
+    aiStatusRef.current = next
+    setAiStatus(next)
+    try { localStorage.setItem(AI_KEY, JSON.stringify([...next.values()])) } catch { /* 容量不足忽略 */ }
+  }, [])
+
+  // 合併一筆 AI 狀態（來自模擬節點 / 同步後端 / P2P）；回傳是否有變動（決定要不要再轉發）
+  const mergeAiStatus = useCallback((incoming: ShelterAIStatus): boolean => {
+    if (!incoming?.shelterId) return false
+    const cur = aiStatusRef.current
+    const existing = cur.get(incoming.shelterId)
+    if (existing && !aiStatusIsNewer(incoming, existing)) return false
+    const next = new Map(cur); next.set(incoming.shelterId, incoming); persistAi(next)
+    return true
+  }, [persistAi])
+
+  // 指揮中心審核 AI 回報（PDR §9：確認 / 修正 / 忽略）→ 來源升為 command、版本遞增。
+  const reviewAiStatus = useCallback((
+    shelterId: string,
+    review: AIReviewStatus,
+    opts?: { resources?: ShelterAIStatus['resources']; estimatedCount?: number; note?: string; by?: string },
+  ): ShelterAIStatus | null => {
+    const existing = aiStatusRef.current.get(shelterId)
+    if (!existing) return null
+    const count = opts?.estimatedCount ?? existing.people.estimatedCount
+    const cap = existing.people.capacity
+    const occupancyRate = cap > 0 ? Math.round((count / cap) * 100) : 0
+    const resources = opts?.resources ?? existing.resources
+    // 指揮中心資料屬人工查證 → 可信度 100
+    const people = { ...existing.people, estimatedCount: count, occupancyRate, confidence: 100 }
+    const aiMonitor = { ...existing.aiMonitor, source: 'command' as const }
+
+    // 修正：依新數值重算異常/原因/嚴重度/急需/分析（修好就會解除異常）；
+    // 忽略：判定誤報 → 清除異常；確認：保留異常記錄但已由人工處理。
+    let abnormal = existing.abnormal
+    let abnormalReasons = existing.abnormalReasons
+    let abnormalSeverity = existing.abnormalSeverity
+    let urgentNeeds = existing.urgentNeeds
+    let analysis = existing.analysis
+    if (review === 'corrected') {
+      const a = assessAbnormal({ people, resources, confidence: 100, aiMonitor })
+      abnormal = a.abnormal
+      abnormalReasons = a.reasons
+      abnormalSeverity = a.severity
+      urgentNeeds = deriveUrgentNeeds(resources)
+      analysis = `指揮中心已修正：${summarizeReading(occupancyRate, resources)}`
+    } else if (review === 'ignored') {
+      abnormal = false
+      abnormalReasons = []
+      abnormalSeverity = undefined
+    }
+
+    const updated: ShelterAIStatus = {
+      ...existing,
+      people, resources, aiMonitor,
+      abnormal, abnormalReasons, abnormalSeverity, urgentNeeds, analysis,
+      confidence: 100,
+      review,
+      reviewedBy: opts?.by ?? '東區救災指揮中心',
+      reviewNote: opts?.note,
+      updatedAt: new Date().toISOString(),
+      version: existing.version + 1,
+    }
+    const next = new Map(aiStatusRef.current); next.set(shelterId, updated); persistAi(next)
+    return updated
+  }, [persistAi])
+
+  // 待指揮中心處理的 AI 異常（PDR §10.2 異常警示清單）
+  const aiAlerts = useMemo(
+    () => [...aiStatus.values()].filter(s => s.abnormal && s.review === 'pending'),
+    [aiStatus],
+  )
+
   const shelters = useMemo(() => {
     return (sheltersData as Shelter[]).map(s => {
-      const surge = Math.floor(getSurgeRate(s.shelter_id) * timeOffset)
-      return enrichShelterWithCapacity({
-        ...s,
-        capacity: {
-          ...s.capacity,
-          current_estimate: Math.min(s.capacity.physical, s.capacity.current_estimate + surge),
+      const base = (() => {
+        const surge = Math.floor(getSurgeRate(s.shelter_id) * timeOffset)
+        return enrichShelterWithCapacity({
+          ...s,
+          capacity: {
+            ...s.capacity,
+            current_estimate: Math.min(s.capacity.physical, s.capacity.current_estimate + surge),
+          },
+        })
+      })()
+
+      // 疊加 AI 監測狀態：已採用（auto/confirmed/corrected）或待確認(pending)皆顯示 AI 值；
+      // ignored 則維持 base（模擬 / 容量資料）。unknown 的資源退回 base。
+      const ai = aiStatus.get(s.shelter_id)
+      if (!ai || ai.review === 'ignored') return base
+      const r = ai.resources
+      const pick = (lv: typeof r.water, fallback: ResourceStatus): ResourceStatus =>
+        lv === 'unknown' ? fallback : lv
+      return {
+        ...base,
+        capacity: { ...base.capacity, current_estimate: Math.min(base.capacity.physical, ai.people.estimatedCount) },
+        current_occupancy: ai.people.estimatedCount,
+        resources: {
+          water:   pick(r.water,   base.resources.water),
+          food:    pick(r.food,    base.resources.food),
+          medical: pick(r.medical, base.resources.medical),
+          power:   pick(r.power,   base.resources.power),
         },
-      })
+        last_updated: ai.updatedAt,
+      }
     })
-  }, [timeOffset])
+  }, [timeOffset, aiStatus])
 
   const addReport = useCallback((r: CrowdReport) => {
     const n = normalize(r)
@@ -242,6 +358,7 @@ export function ShelterProvider({ children }: { children: ReactNode }) {
     <ShelterContext.Provider value={{
       shelters, reports, activeReports, reportThreads, timeOffset, setTimeOffset,
       addReport, mergeReport, voteReport, resolveReport, setReportStatus, setThreadStatus,
+      aiStatus, aiAlerts, mergeAiStatus, reviewAiStatus,
     }}>
       {children}
     </ShelterContext.Provider>

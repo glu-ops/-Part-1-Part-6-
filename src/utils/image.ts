@@ -34,6 +34,21 @@ export async function filesToAttachments(list: FileList | File[]): Promise<{ att
   return { attachments, skipped }
 }
 
+// 將同源 / public 下的圖片網址轉成 data URL（供 /api/vision 辨識；它只收 data:image/）。
+// 失敗（檔案不存在 / CORS）時拋錯，呼叫端可 fallback。
+export async function urlToDataUrl(url: string): Promise<string> {
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`IMG_${res.status}`)
+  const blob = await res.blob()
+  if (!blob.type.startsWith('image/')) throw new Error('NOT_IMAGE')
+  return new Promise<string>((resolve, reject) => {
+    const fr = new FileReader()
+    fr.onload = () => resolve(fr.result as string)
+    fr.onerror = reject
+    fr.readAsDataURL(blob)
+  })
+}
+
 // 將上傳圖片壓縮成較小的 base64 JPEG：
 // 1) 可持久化到 localStorage（blob URL 重整後失效）
 // 2) 夠小可透過 Mesh P2P 傳遞給其他節點

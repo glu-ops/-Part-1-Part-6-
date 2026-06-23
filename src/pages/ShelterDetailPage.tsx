@@ -15,6 +15,7 @@ import {
 } from '../utils/scoring'
 import { getSurgeRate } from '../contexts/ShelterContext'
 import StatusBadge from '../components/ShelterCard/StatusBadge'
+import ShelterAiStatusCard from '../components/ShelterCard/ShelterAiStatusCard'
 import { DISASTER_ICON } from '../disasters'
 import { getResourceCapacityStatus, getShelterSupportTimes, supportTimeColor, supportTimeLabel } from '../utils/shelterCapacity'
 import type { EntryStatus, ResourceStatus, DisasterMode } from '../types'
@@ -126,6 +127,9 @@ export default function ShelterDetailPage() {
             <span>{t('common.danger')} 0</span><span>{t('common.caution')} 30</span><span>{t('common.safe')} 60</span><span>100</span>
           </div>
         </div>
+
+        {/* AI 即時監測（PDR §11）：有監測資料時顯示，無則自動隱藏 */}
+        <ShelterAiStatusCard shelterId={s.shelter_id} />
 
         {/* 進入狀態 */}
         <div className="glass rounded-2xl p-4">

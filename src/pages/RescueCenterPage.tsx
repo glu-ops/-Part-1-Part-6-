@@ -13,6 +13,7 @@ import type { MeshMessage } from '../hooks/usePeerMesh'
 import MeshMap from '../components/Map/MeshMap'
 import ReportThreadCard from '../components/Report/ReportThreadCard'
 import SosBoard from '../components/Mesh/SosBoard'
+import ShelterAiPanel from '../components/Rescue/ShelterAiPanel'
 import type { CrowdReport, SosEvent, SosReply, SosStatus, SosReplyKind, HandleStatus, ResourceStatus, Announcement, AnnounceLevel } from '../types'
 import { DEFAULT_LOC } from '../utils/geo'
 
@@ -203,6 +204,9 @@ export default function RescueCenterPage() {
           </details>
         )}
       </div>
+
+      {/* AI Camera 避難所監測（PDR §10）：監測節點啟停 + 狀態總覽 + 異常警示處理 */}
+      <ShelterAiPanel />
 
       <div className="lg:grid lg:grid-cols-[1fr_1fr_1.1fr] lg:gap-4 lg:flex-1 lg:min-h-0">
         {/* 求救看板（B/C 層 SOS，可回覆與推進狀態） */}
