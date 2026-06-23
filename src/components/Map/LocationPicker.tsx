@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { MapContainer, TileLayer, Marker } from 'react-leaflet'
 import L from 'leaflet'
 import { LocateFixed, Loader2 } from 'lucide-react'
@@ -6,6 +7,7 @@ import ShelterMarker from './ShelterMarker'
 import BuildingLayer from './BuildingLayer'
 import ReportOverlay from './ReportOverlay'
 import FloodOverlay from './FloodOverlay'
+import MapLegend from './MapLegend'
 import { FlyTo, ClickCapture, InvalidateOnMount } from './mapHelpers'
 import { useUser } from '../../contexts/UserContext'
 import { useShelters } from '../../contexts/ShelterContext'
@@ -42,6 +44,7 @@ export default function LocationPicker({ value, onChange, className, showContext
   const { locateMe, locating, disaster } = useUser()
   const { shelters } = useShelters()
   const { t } = useI18n()
+  const [showReports, setShowReports] = useState(true)   // 回報圖層開關（情境模式）
 
   return (
     <div className={`relative overflow-hidden ${className ?? 'w-full h-56 rounded-2xl border border-white/10'}`}>
@@ -65,7 +68,7 @@ export default function LocationPicker({ value, onChange, className, showContext
         {showContext && (
           <>
             <FloodOverlay />
-            <ReportOverlay />
+            {showReports && <ReportOverlay />}
             {shelters.map(s => {
               const notSuitable = s.not_suitable_for.includes(disaster)
               const status = notSuitable ? 'danger' : getOverallStatus(s, disaster)
@@ -90,6 +93,13 @@ export default function LocationPicker({ value, onChange, className, showContext
         />
       </MapContainer>
       {showContext && <div className="map-vignette" />}
+      {showContext && (
+        <MapLegend
+          shelters buildings floodDepth reports
+          showReports={showReports} onToggleReports={() => setShowReports(v => !v)}
+          className="absolute bottom-3 right-3 z-[500]"
+        />
+      )}
 
       {!showContext && (
         <>

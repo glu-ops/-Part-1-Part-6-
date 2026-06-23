@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Droplets, Utensils, Heart, Zap, Navigation, X, Clock, Users, MapPin, ChevronDown, Check } from 'lucide-react'
+import { Droplets, Utensils, Heart, Zap, Navigation, X, Clock, Users, MapPin } from 'lucide-react'
 import ShelterMap from '../components/Map/ShelterMap'
+import MapLegend from '../components/Map/MapLegend'
 import RiskPanel from '../components/RiskPanel'
 import StatusBadge from '../components/ShelterCard/StatusBadge'
 import { useShelters } from '../contexts/ShelterContext'
@@ -9,11 +10,6 @@ import { useUser } from '../contexts/UserContext'
 import { useI18n } from '../i18n'
 import { getOverallStatus, walkMinutes } from '../utils/scoring'
 import { TIME_HORIZON, SIM_LABEL_KEY } from '../disasters'
-import { assessAllZones, RISK_COLOR } from '../utils/risk'
-import type { RiskLevel } from '../utils/risk'
-import { FLOOD_DEPTH_BANDS, FLOOD_RISK_COLOR } from '../flood'
-import { FACILITY_META } from '../components/Map/FloodFacilityOverlay'
-import type { FacilityType } from '../components/Map/FloodFacilityOverlay'
 import type { Shelter, OverallStatus } from '../types'
 
 const RES = [
@@ -58,20 +54,11 @@ export default function HomePage() {
   const { t } = useI18n()
   const nav = useNavigate()
   const [selected, setSelected] = useState<Shelter | null>(null)
-  const [legendOpen, setLegendOpen] = useState(true)
   const [showFacilities, setShowFacilities] = useState(true)   // 淹水：防汛據點圖層開關
   const [showReports, setShowReports] = useState(true)         // 回報圖層開關（所有災害模式）
 
   // 切換災害時重置時間軸（各災害時間尺度不同）
   useEffect(() => { setTimeOffset(0) }, [disaster, setTimeOffset])
-
-  // 區域風險各等級數量（圖例用）
-  const zoneRisks = useMemo(() => assessAllZones(disaster), [disaster])
-  const zoneCounts = useMemo(() => {
-    const c: Record<RiskLevel, number> = { low: 0, caution: 0, high: 0, danger: 0 }
-    zoneRisks.forEach(r => { c[r.level]++ })
-    return c
-  }, [zoneRisks])
 
   const horizon = TIME_HORIZON[disaster]
   const step = Math.max(1, Math.round(horizon / 36))
@@ -125,130 +112,12 @@ export default function HomePage() {
         <RiskPanel />
       </div>
 
-      {/* 左下：圖例（依圖層分組；形狀=圖層、顏色=嚴重度；可收合） */}
-      <div className="absolute bottom-20 left-3 z-[500] glass rounded-2xl px-3 py-2.5 w-44 max-h-[55vh] overflow-y-auto no-scrollbar lg:bottom-4 lg:left-4">
-        <button onClick={() => setLegendOpen(o => !o)} className="flex items-center gap-2 w-full text-[11px] font-semibold text-white/75">
-          <span>{t('legend.title')}</span>
-          <ChevronDown size={13} className={`ml-auto text-white/45 transition-transform ${legendOpen ? 'rotate-180' : ''}`} />
-        </button>
-
-        {legendOpen && (
-          <div className="space-y-2.5 mt-2">
-            {/* 避難所：發光圓點 */}
-            <div className="space-y-1">
-              <p className="text-[9px] text-white/35 uppercase tracking-wider">{t('legend.shelters')}</p>
-              {([
-                { color: '#22c55e', status: 'safe' as const,    key: 'common.safe' },
-                { color: '#f4b740', status: 'caution' as const, key: 'common.caution' },
-                { color: '#ef4444', status: 'danger' as const,  key: 'common.dangerOrNa' },
-              ]).map(l => {
-                const count = shelters.filter(s =>
-                  s.not_suitable_for.includes(disaster) ? l.status === 'danger' : getOverallStatus(s, disaster) === l.status,
-                ).length
-                return (
-                  <div key={l.key} className="flex items-center gap-2 text-[11px] text-white/70">
-                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: l.color, boxShadow: `0 0 8px ${l.color}` }} />
-                    <span>{t(l.key)}</span>
-                    <span className="ml-auto text-white/40 num">{count}</span>
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* 區域風險：地震=空心虛線環；淹水=水深藍色塊（顏色語言＝水） */}
-            {zoneRisks.length > 0 && (
-              <div className="space-y-1 pt-1.5 border-t border-white/10">
-                <p className="text-[9px] text-white/35 uppercase tracking-wider">
-                  {disaster === 'flood' ? t('legend.floodZoneRisk') : t('legend.zoneRisk')}
-                </p>
-                {(['danger', 'high', 'caution', 'low'] as RiskLevel[]).map(lvl => (
-                  <div key={lvl} className="flex items-center gap-2 text-[11px] text-white/70">
-                    {disaster === 'flood'
-                      ? <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: FLOOD_RISK_COLOR[lvl], boxShadow: `0 0 6px ${FLOOD_RISK_COLOR[lvl]}99` }} />
-                      : <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 border-2 border-dashed" style={{ borderColor: RISK_COLOR[lvl] }} />}
-                    <span>{t(`risk.level.${lvl}`)}</span>
-                    <span className="ml-auto text-white/40 num">{zoneCounts[lvl]}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* 建物受損：實心方塊（地震，逐棟） */}
-            {disaster === 'earthquake' && (
-              <div className="space-y-1 pt-1.5 border-t border-white/10">
-                <p className="text-[9px] text-white/35 uppercase tracking-wider">{t('legend.buildings')}</p>
-                <div className="flex items-center gap-2 text-[11px] text-white/70">
-                  <span className="w-2.5 h-2.5 flex-shrink-0 rounded-[2px]" style={{ background: '#ef4444' }} />
-                  <span>{t('home.legendCollapse')}</span>
-                </div>
-                <div className="flex items-center gap-2 text-[11px] text-white/70">
-                  <span className="w-2.5 h-2.5 flex-shrink-0 rounded-[2px]" style={{ background: '#f97316' }} />
-                  <span>{t('home.legendAtRisk')}</span>
-                </div>
-              </div>
-            )}
-
-            {/* 淹水：官方深度級距 + 感測器 + 防汛據點（淹水模式） */}
-            {disaster === 'flood' && (
-              <>
-                <div className="space-y-1 pt-1.5 border-t border-white/10">
-                  <p className="text-[9px] text-white/35 uppercase tracking-wider">{t('legend.floodDepth')}</p>
-                  {FLOOD_DEPTH_BANDS.map(b => (
-                    <div key={b.label} className="flex items-center gap-2 text-[11px] text-white/70">
-                      <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: b.color, boxShadow: `0 0 6px ${b.color}99` }} />
-                      <span className="num">{b.label}</span>
-                    </div>
-                  ))}
-                  <div className="flex items-center gap-2 text-[11px] text-white/70 pt-0.5">
-                    <span className="flex-shrink-0" style={{ width: 10, height: 10, background: '#60a5fa', borderRadius: '50% 50% 50% 0', transform: 'rotate(-45deg)' }} />
-                    <span>{t('flood.sensor')}</span>
-                  </div>
-                </div>
-
-                <div className="space-y-1 pt-1.5 border-t border-white/10">
-                  {/* 可開關：控制地圖上的防汛據點圖層 */}
-                  <button onClick={() => setShowFacilities(v => !v)}
-                    className="flex items-center gap-1.5 w-full text-[9px] text-white/35 uppercase tracking-wider">
-                    <span className={`flex items-center justify-center flex-shrink-0 rounded-[3px] border ${showFacilities ? 'bg-white/80 border-white/80' : 'border-white/40'}`} style={{ width: 11, height: 11 }}>
-                      {showFacilities && <Check size={8} className="text-neutral-900" strokeWidth={3.5} />}
-                    </span>
-                    <span>{t('legend.floodFacility')}</span>
-                  </button>
-                  <div className={showFacilities ? '' : 'opacity-35'}>
-                    {(Object.keys(FACILITY_META) as FacilityType[]).map(type => (
-                      <div key={type} className="flex items-center gap-2 text-[11px] text-white/70">
-                        <span className="flex items-center justify-center flex-shrink-0 font-bold"
-                          style={{ width: 14, height: 14, borderRadius: 4, fontSize: 9, color: FACILITY_META[type].color, border: `1px solid ${FACILITY_META[type].color}`, background: 'rgba(10,22,40,.6)' }}>
-                          {FACILITY_META[type].char}
-                        </span>
-                        <span>{t(`flood.fac.${type}`)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* 其他：白圓點 / 白菱形 */}
-            <div className="space-y-1 pt-1.5 border-t border-white/10">
-              <p className="text-[9px] text-white/35 uppercase tracking-wider">{t('legend.other')}</p>
-              <div className="flex items-center gap-2 text-[11px] text-white/70">
-                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-white/90" style={{ boxShadow: '0 0 8px rgba(255,255,255,.6)' }} />
-                <span>{t('home.legendMine')}</span>
-              </div>
-              {/* 回報圖層：可勾選開關（所有災害模式） */}
-              <button onClick={() => setShowReports(v => !v)}
-                className="flex items-center gap-2 w-full text-[11px] text-white/70">
-                <span className={`flex items-center justify-center flex-shrink-0 rounded-[3px] border ${showReports ? 'bg-white/80 border-white/80' : 'border-white/40'}`} style={{ width: 11, height: 11 }}>
-                  {showReports && <Check size={8} className="text-neutral-900" strokeWidth={3.5} />}
-                </span>
-                <span className="w-2.5 h-2.5 flex-shrink-0 bg-white/70 rotate-45" />
-                <span className={showReports ? '' : 'opacity-50'}>{t('home.legendReport')}</span>
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+      {/* 左下：圖例（共用 MapLegend；依本圖實際圖層帶入對應 section） */}
+      <MapLegend
+        shelters zoneRisk buildings floodDepth floodSensor facilities reports mine
+        showReports={showReports} onToggleReports={() => setShowReports(v => !v)}
+        showFacilities={showFacilities} onToggleFacilities={() => setShowFacilities(v => !v)}
+      />
 
       {/* ─── 避難所資訊卡（行動：底部浮卡；桌面：右側浮卡） ─── */}
       {selected && selStatus && (

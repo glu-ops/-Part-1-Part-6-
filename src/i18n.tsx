@@ -268,6 +268,10 @@ const zh: Dict = {
   'legend.floodZoneRisk': '區域淹水風險',
   'legend.floodDepth': '淹水深度',
   'legend.floodFacility': '防汛據點',
+  'legend.route': '路線',
+  'legend.routeOrigin': '起點（我的位置）',
+  'legend.routeDest': '目的地',
+  'legend.routeLine': '建議路線',
 
   'detail.notFound': '找不到避難所資料',
   'entry.official_open': '政府正式開放',
@@ -719,6 +723,10 @@ const en: Dict = {
   'legend.floodZoneRisk': 'Zone flood risk',
   'legend.floodDepth': 'Flood depth',
   'legend.floodFacility': 'Flood-response sites',
+  'legend.route': 'Route',
+  'legend.routeOrigin': 'Origin (my location)',
+  'legend.routeDest': 'Destination',
+  'legend.routeLine': 'Suggested route',
 
   'detail.notFound': 'Shelter not found',
   'entry.official_open': 'Officially open',

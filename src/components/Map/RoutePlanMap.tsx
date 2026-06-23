@@ -4,6 +4,7 @@ import L from 'leaflet'
 import ShelterMarker from './ShelterMarker'
 import BuildingLayer from './BuildingLayer'
 import FloodOverlay from './FloodOverlay'
+import MapLegend from './MapLegend'
 import { InvalidateOnMount } from './mapHelpers'
 import { useShelters } from '../../contexts/ShelterContext'
 import { useUser } from '../../contexts/UserContext'
@@ -93,6 +94,7 @@ export default function RoutePlanMap({ dest, path, onSelectDest }: Props) {
       </MapContainer>
       <div className="map-texture" />
       <div className="map-vignette" />
+      <MapLegend shelters buildings floodDepth route mine className="absolute bottom-4 right-4 z-[500]" />
     </div>
   )
 }
