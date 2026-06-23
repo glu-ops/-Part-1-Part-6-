@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Droplets, Utensils, Heart, Zap, Navigation, X, Clock, Users, MapPin, ChevronDown } from 'lucide-react'
+import { Droplets, Utensils, Heart, Zap, Navigation, X, Clock, Users, MapPin, ChevronDown, Check } from 'lucide-react'
 import ShelterMap from '../components/Map/ShelterMap'
 import RiskPanel from '../components/RiskPanel'
 import StatusBadge from '../components/ShelterCard/StatusBadge'
@@ -11,6 +11,9 @@ import { getOverallStatus, walkMinutes } from '../utils/scoring'
 import { TIME_HORIZON, SIM_LABEL_KEY } from '../disasters'
 import { assessAllZones, RISK_COLOR } from '../utils/risk'
 import type { RiskLevel } from '../utils/risk'
+import { FLOOD_DEPTH_BANDS, FLOOD_RISK_COLOR } from '../flood'
+import { FACILITY_META } from '../components/Map/FloodFacilityOverlay'
+import type { FacilityType } from '../components/Map/FloodFacilityOverlay'
 import type { Shelter, OverallStatus } from '../types'
 
 const RES = [
@@ -56,6 +59,7 @@ export default function HomePage() {
   const nav = useNavigate()
   const [selected, setSelected] = useState<Shelter | null>(null)
   const [legendOpen, setLegendOpen] = useState(true)
+  const [showFacilities, setShowFacilities] = useState(true)   // 淹水：防汛據點圖層開關
 
   // 切換災害時重置時間軸（各災害時間尺度不同）
   useEffect(() => { setTimeOffset(0) }, [disaster, setTimeOffset])
@@ -93,7 +97,7 @@ export default function HomePage() {
   return (
     <div className="fixed inset-0 overflow-hidden">
       {/* 地圖背景（滿版，浮層 UI 疊於其上） */}
-      <ShelterMap onSelect={setSelected} />
+      <ShelterMap onSelect={setSelected} showFacilities={showFacilities} />
 
       {/* 災害警告列（浮動 chip）— 行動版下移避免蓋到搜尋列 */}
       {dangerCount > 0 && (
@@ -150,13 +154,17 @@ export default function HomePage() {
               })}
             </div>
 
-            {/* 區域風險：空心虛線環（地震/淹水） */}
+            {/* 區域風險：地震=空心虛線環；淹水=水深藍色塊（顏色語言＝水） */}
             {zoneRisks.length > 0 && (
               <div className="space-y-1 pt-1.5 border-t border-white/10">
-                <p className="text-[9px] text-white/35 uppercase tracking-wider">{t('legend.zoneRisk')}</p>
+                <p className="text-[9px] text-white/35 uppercase tracking-wider">
+                  {disaster === 'flood' ? t('legend.floodZoneRisk') : t('legend.zoneRisk')}
+                </p>
                 {(['danger', 'high', 'caution', 'low'] as RiskLevel[]).map(lvl => (
                   <div key={lvl} className="flex items-center gap-2 text-[11px] text-white/70">
-                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 border-2 border-dashed" style={{ borderColor: RISK_COLOR[lvl] }} />
+                    {disaster === 'flood'
+                      ? <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: FLOOD_RISK_COLOR[lvl], boxShadow: `0 0 6px ${FLOOD_RISK_COLOR[lvl]}99` }} />
+                      : <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 border-2 border-dashed" style={{ borderColor: RISK_COLOR[lvl] }} />}
                     <span>{t(`risk.level.${lvl}`)}</span>
                     <span className="ml-auto text-white/40 num">{zoneCounts[lvl]}</span>
                   </div>
@@ -179,15 +187,45 @@ export default function HomePage() {
               </div>
             )}
 
-            {/* 淹水蔓延：白色虛線圈（淹水） */}
+            {/* 淹水：官方深度級距 + 感測器 + 防汛據點（淹水模式） */}
             {disaster === 'flood' && (
-              <div className="space-y-1 pt-1.5 border-t border-white/10">
-                <p className="text-[9px] text-white/35 uppercase tracking-wider">{t('legend.flood')}</p>
-                <div className="flex items-center gap-2 text-[11px] text-white/70">
-                  <span className="w-2.5 h-2.5 flex-shrink-0 rounded-full border border-dashed border-white/60 bg-white/15" />
-                  <span>{t('home.legendFlood')}</span>
+              <>
+                <div className="space-y-1 pt-1.5 border-t border-white/10">
+                  <p className="text-[9px] text-white/35 uppercase tracking-wider">{t('legend.floodDepth')}</p>
+                  {FLOOD_DEPTH_BANDS.map(b => (
+                    <div key={b.label} className="flex items-center gap-2 text-[11px] text-white/70">
+                      <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: b.color, boxShadow: `0 0 6px ${b.color}99` }} />
+                      <span className="num">{b.label}</span>
+                    </div>
+                  ))}
+                  <div className="flex items-center gap-2 text-[11px] text-white/70 pt-0.5">
+                    <span className="flex-shrink-0" style={{ width: 10, height: 10, background: '#60a5fa', borderRadius: '50% 50% 50% 0', transform: 'rotate(-45deg)' }} />
+                    <span>{t('flood.sensor')}</span>
+                  </div>
                 </div>
-              </div>
+
+                <div className="space-y-1 pt-1.5 border-t border-white/10">
+                  {/* 可開關：控制地圖上的防汛據點圖層 */}
+                  <button onClick={() => setShowFacilities(v => !v)}
+                    className="flex items-center gap-1.5 w-full text-[9px] text-white/35 uppercase tracking-wider">
+                    <span className={`flex items-center justify-center flex-shrink-0 rounded-[3px] border ${showFacilities ? 'bg-white/80 border-white/80' : 'border-white/40'}`} style={{ width: 11, height: 11 }}>
+                      {showFacilities && <Check size={8} className="text-neutral-900" strokeWidth={3.5} />}
+                    </span>
+                    <span>{t('legend.floodFacility')}</span>
+                  </button>
+                  <div className={showFacilities ? '' : 'opacity-35'}>
+                    {(Object.keys(FACILITY_META) as FacilityType[]).map(type => (
+                      <div key={type} className="flex items-center gap-2 text-[11px] text-white/70">
+                        <span className="flex items-center justify-center flex-shrink-0 font-bold"
+                          style={{ width: 14, height: 14, borderRadius: 4, fontSize: 9, color: FACILITY_META[type].color, border: `1px solid ${FACILITY_META[type].color}`, background: 'rgba(10,22,40,.6)' }}>
+                          {FACILITY_META[type].char}
+                        </span>
+                        <span>{t(`flood.fac.${type}`)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
             )}
 
             {/* 其他：白圓點 / 白菱形 */}

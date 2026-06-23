@@ -4,7 +4,8 @@ import L from 'leaflet'
 import { LocateFixed, Loader2 } from 'lucide-react'
 import ShelterMarker from './ShelterMarker'
 import BuildingLayer from './BuildingLayer'
-import FloodOverlay from './FloodOverlay'
+import FloodSensorOverlay from './FloodSensorOverlay'
+import FloodFacilityOverlay from './FloodFacilityOverlay'
 import RiskOverlay from './RiskOverlay'
 import ReportOverlay from './ReportOverlay'
 import LocationSearch from './LocationSearch'
@@ -35,9 +36,11 @@ const userIcon = L.divIcon({
 
 interface Props {
   onSelect: (s: Shelter) => void
+  /** 淹水模式：是否顯示防汛據點圖層（由圖例開關控制） */
+  showFacilities?: boolean
 }
 
-export default function ShelterMap({ onSelect }: Props) {
+export default function ShelterMap({ onSelect, showFacilities = true }: Props) {
   const { shelters } = useShelters()
   const { disaster, userLoc, locating, geoError, locateMe } = useUser()
   const { target } = useFocus()
@@ -75,8 +78,9 @@ export default function ShelterMap({ onSelect }: Props) {
 
         <InvalidateOnMount />
         <BuildingLayer />
-        <FloodOverlay />
         <RiskOverlay />
+        {showFacilities && <FloodFacilityOverlay />}
+        <FloodSensorOverlay />
         <ReportOverlay focus={reportFocus} />
 
         <Marker position={[userLoc.lat, userLoc.lng]} icon={userIcon} />

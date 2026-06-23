@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
-import { ShieldAlert, ChevronDown } from 'lucide-react'
+import { ShieldAlert, ChevronDown, CloudRain } from 'lucide-react'
 import { useUser } from '../contexts/UserContext'
 import { useI18n } from '../i18n'
-import { assessAllZones, RISK_COLOR } from '../utils/risk'
+import { assessAllZones, RISK_COLOR, hazardLive } from '../utils/risk'
+import { rainWarnLevel } from '../flood'
 import { formatReasons } from './Map/RiskOverlay'
 
 /** 區域風險評估面板（地震/淹水模式）：依分數排序列出各區域等級與原因 */
@@ -12,11 +13,31 @@ export default function RiskPanel() {
   const [open, setOpen] = useState(false)
   const risks = useMemo(() => assessAllZones(disaster), [disaster])
 
+  // 淹水模式：南區站官方累積雨量警戒（一級 / 二級）
+  const warn = disaster === 'flood' ? rainWarnLevel(hazardLive.flood) : { level: 'none' as const }
+
   if (risks.length === 0) return null
   const alert = risks.filter(r => r.level === 'high' || r.level === 'danger').length
+  const warnColor = warn.level === 'l1' ? '#ef4444' : '#f4b740'
 
   return (
     <div className="w-full">
+      {/* 官方雨量警戒橫幅（達二級 / 一級才顯示） */}
+      {warn.level !== 'none' && 'window' in warn && (
+        <div className="glass rounded-2xl px-3 py-2 mb-2 flex items-center gap-2"
+          style={{ border: `1px solid ${warnColor}66` }}>
+          <CloudRain size={15} style={{ color: warnColor }} className="shrink-0" />
+          <div className="min-w-0">
+            <p className="text-[12px] font-bold" style={{ color: warnColor }}>
+              {t(warn.level === 'l1' ? 'flood.warnL1' : 'flood.warnL2')}
+            </p>
+            <p className="text-[10px] text-white/55 num">
+              {t('flood.warnDetail', { w: t(`flood.win.${warn.window}`), v: warn.value!, th: warn.threshold! })}
+            </p>
+          </div>
+        </div>
+      )}
+
       <button onClick={() => setOpen(o => !o)}
         className="w-full glass rounded-2xl px-3 py-2 flex items-center gap-2 text-sm text-white">
         <ShieldAlert size={15} className="text-white/80" />

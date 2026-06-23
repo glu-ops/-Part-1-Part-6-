@@ -12,6 +12,7 @@
     "rain_1h": 68,
     "rain_3h": 145,
     "rain_6h": 225,
+    "rain_12h": 268,
     "rain_24h": 318,
     "river": { "name": "竹溪", "level_ratio": 0.88 },
     "tide_high": false,

@@ -4,6 +4,7 @@
 import zonesData from '../data/zones.json'
 import hazardLive from '../data/hazard-live.json'
 import { distanceMeters } from './geo'
+import { accumRatioToL1, rainWarnLevel } from '../flood'
 import type { DisasterMode } from '../types'
 
 export interface Zone {
@@ -96,9 +97,9 @@ export function assessEarthquake(zone: Zone): ZoneRisk {
 
 export function assessFlood(zone: Zone): ZoneRisk {
   const f = hazardLive.flood
-  const accumRatio = Math.max(
-    f.rain_1h / 80, f.rain_3h / 150, f.rain_6h / 250, f.rain_24h / 350,
-  )
+  // 累積雨量以南區站官方「一級警戒」門檻正規化（1.0 = 已達一級），取代先前任意分母
+  const accumRatio = accumRatioToL1(f)
+  const warn = rainWarnLevel(f)
   const rainNowScore   = clamp01(f.rain_now_mmhr / 80) * 15
   const accumScore     = clamp01(accumRatio) * 25
   const riverScore     = clamp01(f.river.level_ratio) * (zone.nearRiver ? 15 : 6)
@@ -110,7 +111,9 @@ export function assessFlood(zone: Zone): ZoneRisk {
     rainNowScore + accumScore + riverScore + drainageScore + tideScore + pumpScore + potentialScore))
 
   const reasons: ReasonCode[] = []
-  if (accumRatio >= 0.8)                              reasons.push({ code: 'accumRain', vars: { v: f.rain_24h } })
+  // 官方警戒等級（一級 / 二級）優先呈現，附觸發時段與雨量
+  if (warn.level === 'l1')       reasons.push({ code: 'warnL1', vars: { w: warn.window!, v: warn.value! } })
+  else if (warn.level === 'l2')  reasons.push({ code: 'warnL2', vars: { w: warn.window!, v: warn.value! } })
   if (f.rain_now_mmhr >= 50)                          reasons.push({ code: 'rainNow', vars: { v: f.rain_now_mmhr } })
   if (zone.nearRiver && f.river.level_ratio >= 0.85)  reasons.push({ code: 'river', vars: { name: f.river.name } })
   if (zone.floodPotential >= 2)                       reasons.push({ code: 'potential' })
