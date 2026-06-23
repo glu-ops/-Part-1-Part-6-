@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { defineConfig, type Plugin } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
@@ -54,7 +54,16 @@ function devApi(): Plugin {
   }
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  // dev-api 的 serverless 函式以 process.env 讀取機密（如 HF_TOKEN）。
+  // Vite 不會自動把 .env 灌進 process.env，這裡手動載入（含 VITE_HF_TOKEN 後備），
+  // 讓本機 `npm run dev` 的 /api/vision 也能呼叫 Hugging Face。
+  const env = loadEnv(mode, process.cwd(), '')
+  for (const k of ['HF_TOKEN', 'VITE_HF_TOKEN']) {
+    if (env[k] && !process.env[k]) process.env[k] = env[k]
+  }
+
+  return {
   plugins: [
     devApi(),
     react(),
@@ -91,4 +100,5 @@ export default defineConfig({
       },
     }),
   ],
+  }
 })
