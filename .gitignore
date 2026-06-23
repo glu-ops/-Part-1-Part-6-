@@ -5,3 +5,4 @@ node_modules
 # build 產物：由 Vercel/CI 自行 build，不進版本控制
 # （避免把內嵌的環境變數等機密打包進 git）
 dist
+*.pdf 
