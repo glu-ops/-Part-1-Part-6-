@@ -58,13 +58,20 @@ export default function MeshPage() {
   const [copied, setCopied]     = useState(false)
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
   const [filter, setFilter]     = useState<string>('all')  // 'all' | 'sos' | 'system' | <peerId>
-  const endRef = useRef<HTMLDivElement>(null)
+  const chatRef = useRef<HTMLDivElement>(null)
+  // 手機版（<768px）分頁：一次只顯示一個主要功能，預設「即時位置」
+  const [tab, setTab] = useState<'map' | 'sos' | 'p2p'>('map')
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches,
+  )
 
   const { myId, loading, error, peers, messages, connectedCount, connect, sendText, sendQuick, raiseSos, replySos, markSosSafe, openSosComposer, sosEvents, sosFlashId } = useMesh()
   const flashId = sosFlashId
   const { target } = useFocus()
   const focusSos = target?.kind === 'sos' ? { id: target.id, nonce: target.nonce } : null
   const openSosPoints = useMemo(() => sosEvents.filter(e => !isSosClosed(e.status) && e.lat != null && e.lng != null), [sosEvents])
+  // 進行中的 SOS 數（手機 SOS tab badge 與地圖摘要用）
+  const activeSosCount = useMemo(() => sosEvents.filter(e => !isSosClosed(e.status)).length, [sosEvents])
 
   // 名稱解析：訊息自帶 senderName 優先，否則查 peers，最後退回短 ID
   const peerNameMap = useMemo(() => {
@@ -76,7 +83,29 @@ export default function MeshPage() {
     m.senderId === myId ? (myName || t('mesh.me'))
       : (m.senderName || peerNameMap.get(m.senderId) || `${m.senderId.slice(0, 6)}`)
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  // 新訊息時自動捲到底：只捲「聊天容器自身」，不要用 scrollIntoView（它會連帶捲動整個
+  // 視窗）。手機版聊天列表在頁面流中、容器本身不可捲動 → 此操作為無作用，頁面不會被亂跳；
+  // 桌面版容器有自身捲軸 → 正常捲到底。
+  useEffect(() => {
+    const el = chatRef.current
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+  }, [messages])
+
+  // 監看視窗寬度，切換手機分頁版 / 桌機三欄版（只掛載其中一棵樹 → 只會有一個地圖實例）
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)')
+    const onChange = () => setIsMobile(mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+
+  // 切到「即時位置」tab 時，觸發 resize → MeshMap 內 InvalidateOnMount 監聽到後呼叫
+  // Leaflet invalidateSize()，避免地圖因容器尺寸較晚定而空白。
+  useEffect(() => {
+    if (!isMobile || tab !== 'map') return
+    const ids = [60, 250, 500].map(d => setTimeout(() => window.dispatchEvent(new Event('resize')), d))
+    return () => ids.forEach(clearTimeout)
+  }, [isMobile, tab])
 
   // 計算最近避難所 + 距我距離（F2.7-B / F2.7-G）
   const peerViews: MeshPeerView[] = useMemo(() => {
@@ -255,7 +284,7 @@ export default function MeshPage() {
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto no-scrollbar min-h-[180px] lg:min-h-0">
+      <div ref={chatRef} className="flex-1 overflow-y-auto no-scrollbar min-h-[180px] lg:min-h-0">
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full py-10 text-white/35">
             <Radio size={24} className="mb-2 opacity-40" />
@@ -286,7 +315,6 @@ export default function MeshPage() {
             )
           ))
         )}
-        <div ref={endRef} />
       </div>
 
       {/* F2.7-C 快捷訊息 */}
