@@ -1,39 +1,68 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, FilePlus2, Inbox, Loader2, AlertOctagon, HeartHandshake, ShieldCheck, MapPin, User, Megaphone } from 'lucide-react'
+import { Bell, FilePlus2, Inbox, Loader2, AlertOctagon, HeartHandshake, ShieldCheck, MapPin, User, Megaphone, ChevronDown } from 'lucide-react'
 import { useMesh } from '../contexts/MeshContext'
 import { useFocus } from '../contexts/FocusContext'
 import { useI18n } from '../i18n'
 import type { Notice } from '../contexts/MeshContext'
 
-const ICON: Record<Notice['kind'], typeof Bell> = {
-  'report-new': FilePlus2,
-  'report-status': Inbox,
-  'sos-new': AlertOctagon,
-  'sos-status': Loader2,
-  'sos-reply': HeartHandshake,
-  'sos-safe': ShieldCheck,
-  'announce': Megaphone,
-}
-const TINT: Record<Notice['kind'], string> = {
-  'report-new': 'text-white/70',
-  'report-status': 'text-status-caution',
-  'sos-new': 'text-status-danger',
-  'sos-status': 'text-status-caution',
-  'sos-reply': 'text-status-safe',
-  'sos-safe': 'text-status-safe',
-  'announce': 'text-status-caution',
-}
 // 公告依重要程度上色（緊急＝紅、注意＝黃、一般＝藍白）
-const ANNOUNCE_TINT = { info: 'text-white/65', warning: 'text-status-caution', critical: 'text-status-danger' }
+const ANNOUNCE_TINT: Record<string, string> = { info: 'text-white/65', warning: 'text-status-caution', critical: 'text-status-danger' }
 
-/** 回報 / SOS 動態通知中心（Header 鈴鐺 + 下拉面板，點擊可定位地圖） */
+type Filter = 'all' | 'sos' | 'report' | 'command' | 'system'
+const FILTERS: Filter[] = ['all', 'sos', 'report', 'command', 'system']
+
+// 分類篩選：指揮中心＝由指揮中心發出的動作（公告 + 各種已收到/處理中/已派人/已處理）。
+function matchesFilter(n: Notice, f: Filter): boolean {
+  switch (f) {
+    case 'all': return true
+    case 'sos': return n.eventType === 'sos'
+    case 'report': return n.eventType === 'report'
+    case 'command': return n.actorRole === 'command'
+    case 'system': return n.eventType === 'system'
+  }
+}
+
+function iconFor(n: Notice): typeof Bell {
+  if (n.eventType === 'command') return Megaphone
+  if (n.eventType === 'sos') {
+    if (n.action === 'new') return AlertOctagon
+    if (n.action === 'safe') return ShieldCheck
+    if (n.actorRole === 'command') return Loader2          // received / processing / dispatched
+    return HeartHandshake                                  // reply / willing / enroute
+  }
+  if (n.eventType === 'report') {
+    if (n.action === 'new' || n.action === 'supplement') return FilePlus2
+    return Inbox                                           // received / processing / resolved
+  }
+  return Bell
+}
+
+function tintFor(n: Notice): string {
+  if (n.eventType === 'command') return ANNOUNCE_TINT[n.level ?? 'info']
+  if (n.eventType === 'sos') {
+    if (n.action === 'new') return 'text-status-danger'
+    if (n.action === 'safe') return 'text-status-safe'
+    if (n.actorRole === 'command') return 'text-status-caution'
+    return 'text-status-safe'
+  }
+  if (n.eventType === 'report') return n.actorRole === 'command' ? 'text-status-caution' : 'text-white/70'
+  return 'text-white/70'
+}
+
+function hasLocation(n: Notice): boolean {
+  return !!n.refKind && n.lat != null && n.lng != null && !(n.lat === 0 && n.lng === 0)
+}
+
+/** 回報 / SOS 動態通知中心（Header 鈴鐺 + 下拉面板；分類篩選、點擊定位/詳情、單筆已讀） */
 export default function NotificationBell() {
-  const { notices, unreadCount, markNoticesRead } = useMesh()
+  const { notices, unreadCount, markNoticesRead, markNoticeRead } = useMesh()
   const { requestFocus } = useFocus()
   const { t, rt } = useI18n()
   const nav = useNavigate()
   const [open, setOpen] = useState(false)
+  const [filter, setFilter] = useState<Filter>('all')
+  const [expandedId, setExpandedId] = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -44,26 +73,23 @@ export default function NotificationBell() {
     return () => document.removeEventListener('mousedown', close)
   }, [])
 
-  const toggle = () => {
-    setOpen(o => {
-      const next = !o
-      if (next) markNoticesRead()
-      return next
-    })
-  }
-
-  // 點擊通知 → 地圖定位 + 開啟資訊卡（report→首頁地圖；sos→Mesh 地圖）
+  // 點擊通知：標記已讀；有位置 → 定位到地圖並開資訊卡；沒位置 → 展開詳情。
   const onClickNotice = (n: Notice) => {
-    if (n.refKind && n.refId && n.lat != null && n.lng != null) {
+    markNoticeRead(n.notificationId)
+    if (hasLocation(n)) {
       nav(n.refKind === 'sos' ? '/mesh' : '/')
-      requestFocus(n.refKind, n.refId, n.lat, n.lng)
+      requestFocus(n.refKind!, n.targetId, n.lat!, n.lng!)
       setOpen(false)
+    } else {
+      setExpandedId(prev => (prev === n.notificationId ? null : n.notificationId))
     }
   }
 
+  const filtered = notices.filter(n => matchesFilter(n, filter))
+
   return (
     <div className="relative shrink-0" ref={ref}>
-      <button onClick={toggle}
+      <button onClick={() => setOpen(o => !o)}
         className="relative flex items-center text-white/80 hover:text-white glass-cell rounded-full p-1.5"
         aria-label={t('notice.title')}>
         <Bell size={15} />
@@ -76,34 +102,55 @@ export default function NotificationBell() {
 
       {open && (
         <div className="absolute right-0 top-full mt-1.5 w-80 max-h-[70vh] overflow-y-auto no-scrollbar glass rounded-xl z-[60] py-1">
-          <p className="px-3 py-2 text-xs font-semibold text-white/70 border-b border-white/10">{t('notice.title')}</p>
-          {notices.length === 0 ? (
+          <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
+            <p className="text-xs font-semibold text-white/70">{t('notice.title')}</p>
+            {unreadCount > 0 && (
+              <button onClick={markNoticesRead} className="text-[10px] text-white/45 hover:text-white">
+                {t('notice.markAllRead')}
+              </button>
+            )}
+          </div>
+
+          {/* 分類：全部 / SOS / 回報 / 指揮中心 / 系統 */}
+          <div className="flex gap-1 px-2 py-2 border-b border-white/5 overflow-x-auto no-scrollbar">
+            {FILTERS.map(f => (
+              <button key={f} onClick={() => setFilter(f)}
+                className={`text-[11px] px-2 py-1 rounded-full whitespace-nowrap transition-colors ${
+                  filter === f ? 'bg-white text-neutral-900 font-semibold' : 'glass-cell text-white/55 hover:text-white'}`}>
+                {t(`notice.filter.${f}`)}
+              </button>
+            ))}
+          </div>
+
+          {filtered.length === 0 ? (
             <p className="px-3 py-6 text-center text-xs text-white/40">{t('notice.empty')}</p>
           ) : (
-            notices.map(n => {
-              const Icon = ICON[n.kind]
-              const clickable = n.refId != null && n.lat != null
-              const tint = n.kind === 'announce' ? (ANNOUNCE_TINT[n.level ?? 'info']) : TINT[n.kind]
+            filtered.map(n => {
+              const Icon = iconFor(n)
+              const tint = tintFor(n)
+              const located = hasLocation(n)
+              const expanded = expandedId === n.notificationId
+              const showLoc = (n.eventType === 'sos' || n.eventType === 'report') && !!n.locationName
               return (
-                <button key={n.id} onClick={() => onClickNotice(n)} disabled={!clickable}
-                  className={`w-full text-left flex items-start gap-2 px-3 py-2.5 border-b border-white/5 ${clickable ? 'hover:bg-white/5 cursor-pointer' : 'cursor-default'}`}>
+                <button key={n.notificationId} onClick={() => onClickNotice(n)}
+                  className="w-full text-left flex items-start gap-2 px-3 py-2.5 border-b border-white/5 hover:bg-white/5 cursor-pointer">
                   <Icon size={14} className={`mt-0.5 shrink-0 ${tint}`} />
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs text-white/90 leading-snug font-medium">{n.text}</p>
-                    {/* 詳細：類型 · 狀態 / 回報者 / 最新內容 / 位置 */}
+                    <p className={`text-xs leading-snug ${n.read ? 'text-white/60' : 'text-white/90 font-medium'}`}>
+                      {!n.read && <span className="inline-block w-1.5 h-1.5 rounded-full bg-status-danger mr-1.5 align-middle" />}
+                      {n.message}
+                    </p>
+                    {/* 詳細：地點 / 執行者 */}
                     <div className="flex items-center gap-1.5 flex-wrap mt-1">
-                      {n.typeLabel && <span className="text-[10px] glass-cell text-white/55 px-1.5 py-0.5 rounded-full">{n.typeLabel}</span>}
-                      {n.statusLabel && <span className="text-[10px] glass-cell text-white/55 px-1.5 py-0.5 rounded-full">{n.statusLabel}</span>}
+                      {showLoc && <span className="text-[10px] glass-cell text-white/55 px-1.5 py-0.5 rounded-full flex items-center gap-1"><MapPin size={9} />{n.locationName}</span>}
+                      {n.actorName && <span className="text-[10px] glass-cell text-white/55 px-1.5 py-0.5 rounded-full flex items-center gap-1"><User size={9} />{n.actorName}</span>}
                     </div>
-                    {n.reporter && (
-                      <p className="text-[10px] text-white/45 mt-1 flex items-center gap-1"><User size={9} />{n.reporter}</p>
-                    )}
-                    {n.latest && <p className="text-[11px] text-white/60 mt-0.5 line-clamp-2">{n.latest}</p>}
+                    {n.detail && <p className={`text-[11px] text-white/60 mt-0.5 ${expanded ? '' : 'line-clamp-2'}`}>{n.detail}</p>}
                     <div className="flex items-center justify-between mt-1">
-                      {clickable
-                        ? <span className="text-[10px] text-white/45 flex items-center gap-1"><MapPin size={9} />{t('notice.tapToLocate')}</span>
-                        : <span />}
-                      <span className="text-[10px] text-white/35">{rt(new Date(n.ts).toISOString())}</span>
+                      <span className="text-[10px] text-white/45 flex items-center gap-1">
+                        {located ? <><MapPin size={9} />{t('notice.tapToLocate')}</> : <><ChevronDown size={9} />{t('notice.viewDetail')}</>}
+                      </span>
+                      <span className="text-[10px] text-white/35">{rt(new Date(n.createdAt).toISOString())}</span>
                     </div>
                   </div>
                 </button>
