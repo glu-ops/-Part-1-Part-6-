@@ -132,8 +132,8 @@
   height: 13px;
   flex: 0 0 18px;
   border-radius: 999px;
-  border: 2px dashed #ef4444;
-  background: rgba(239, 68, 68, 0.12);
+  border: 2px dashed #B30303;
+  background: rgba(45, 14, 14, 0.75);
 }
 
 /* 底部 sheet 滑入 */

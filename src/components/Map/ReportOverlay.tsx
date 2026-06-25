@@ -18,7 +18,7 @@ function threadIcon(sev: ResourceStatus, count: number): L.DivIcon {
     className: '',
     html: `<div style="position:relative;width:18px;height:18px;">
       <div style="width:18px;height:18px;background:rgba(255,255,255,${ALPHA[sev]});border:1.5px solid rgba(255,255,255,.9);border-radius:4px;transform:rotate(45deg);box-shadow:0 0 8px rgba(255,255,255,.4);"></div>
-      ${count > 1 ? `<span style="position:absolute;top:-8px;right:-8px;background:#ef4444;color:#fff;font-size:9px;font-weight:700;border-radius:9px;min-width:15px;height:15px;display:flex;align-items:center;justify-content:center;padding:0 3px;">${count}</span>` : ''}
+      ${count > 1 ? `<span style="position:absolute;top:-8px;right:-8px;background:#B30303;color:#fff;font-size:9px;font-weight:700;border-radius:9px;min-width:15px;height:15px;display:flex;align-items:center;justify-content:center;padding:0 3px;">${count}</span>` : ''}
     </div>`,
     iconSize: [18, 18],
     iconAnchor: [9, 9],

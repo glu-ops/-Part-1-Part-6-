@@ -8,7 +8,7 @@ import type { LatLng } from '../../utils/geo'
 // 起點：白色描邊圓點
 const startIcon = L.divIcon({
   className: '',
-  html: `<div style="width:16px;height:16px;border-radius:50%;background:#f5f5f5;border:3px solid rgba(255,255,255,.95);box-shadow:0 0 0 4px rgba(255,255,255,.18),0 0 14px rgba(255,255,255,.5);"></div>`,
+  html: `<div style="width:16px;height:16px;border-radius:50%;background:#F4F1E6;border:3px solid rgba(255,255,255,.95);box-shadow:0 0 0 4px rgba(255,255,255,.18),0 0 14px rgba(255,255,255,.5);"></div>`,
   iconSize: [16, 16],
   iconAnchor: [8, 8],
 })
@@ -65,7 +65,7 @@ export default function RouteMap({ from, to, path }: Props) {
         {/* 深色描邊（casing），讓白線在灰圖上有對比 */}
         <Polyline
           positions={line}
-          pathOptions={{ color: '#111317', weight: 9, opacity: 0.5 }}
+          pathOptions={{ color: '#050606', weight: 9, opacity: 0.5 }}
         />
         {/* 主路線：白色粗實線；備選/直線估算：白色虛線 */}
         <Polyline

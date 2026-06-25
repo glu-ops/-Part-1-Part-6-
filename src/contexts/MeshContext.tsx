@@ -12,7 +12,12 @@ import { useIdentity } from './IdentityContext'
 import { useI18n } from '../i18n'
 import { SOS_CATEGORY_META, SCOPE_TO_LAYER } from '../sos'
 import SosComposer from '../components/Sos/SosComposer'
-import type { CrowdReport, SosEvent, SosReply, SosStatus, SosReplyKind, Announcement, AnnounceLevel } from '../types'
+import type { CrowdReport, SosEvent, SosReply, SosStatus, SosReplyKind, Announcement } from '../types'
+import { buildSosNotice, buildReportNotice, buildAnnounceNotice, resolveLocationName } from '../utils/notifications'
+import type { Notice } from '../utils/notifications'
+
+// 通知型別由 utils/notifications 定義；此處 re-export 供 NotificationBell 等沿用既有匯入路徑。
+export type { Notice } from '../utils/notifications'
 
 type MeshApi = ReturnType<typeof usePeerMesh>
 
@@ -30,25 +35,6 @@ export interface SosComposerPrefill {
   shelter?: { id: string; name: string; location: string }
 }
 
-export interface Notice {
-  id: string
-  kind: 'report-new' | 'report-status' | 'sos-new' | 'sos-status' | 'sos-reply' | 'sos-safe' | 'announce'
-  text: string                 // 摘要主行
-  ts: number
-  read: boolean
-  level?: AnnounceLevel        // 公告（kind==='announce'）的重要程度，決定樣式
-  // 詳細內容（通知中心展開顯示）
-  reporter?: string            // 回報者 / 求救者名稱
-  typeLabel?: string           // 回報類型
-  statusLabel?: string         // 目前狀態
-  latest?: string              // 最新補充 / 回覆 / 內容
-  // 點擊定位用
-  refKind?: 'report' | 'sos'
-  refId?: string
-  lat?: number
-  lng?: number
-}
-
 interface MeshCtx extends MeshApi {
   sosFlashId: string | null
   // SOS 事件
@@ -62,7 +48,8 @@ interface MeshCtx extends MeshApi {
   // 通知中心
   notices: Notice[]
   unreadCount: number
-  markNoticesRead: () => void
+  markNoticesRead: () => void              // 全部標為已讀
+  markNoticeRead: (notificationId: string) => void  // 單筆標為已讀（點擊時）
 }
 
 const MeshContext = createContext<MeshCtx | null>(null)
@@ -79,8 +66,10 @@ function genId(): string {
  */
 export function MeshProvider({ children }: { children: ReactNode }) {
   const { userLoc } = useUser()
-  const { mergeReport, reports } = useShelters()
+  const { mergeReport, reports, shelters } = useShelters()
   const { myId, name } = useIdentity()
+  // 避難所查詢表：回報以 shelter_id 解析地點名稱（locationName fallback 用）
+  const shelterById = useMemo(() => new Map(shelters.map(s => [s.shelter_id, s])), [shelters])
   const { t } = useI18n()
   const sos = useSosStore()
 
@@ -91,20 +80,21 @@ export function MeshProvider({ children }: { children: ReactNode }) {
 
   const [toast, setToast] = useState<{ kind: 'sos' | 'done' | 'announce'; text: string } | null>(null)
   const [sosFlashId, setSosFlashId] = useState<string | null>(null)
-  // 通知持久化（localStorage：關閉分頁重開仍保留；以節點 ID 為 key 區分身份）
-  const noticeKey = `guardian_notices_${myId || 'anon'}`
+  // 通知持久化（localStorage：關閉分頁重開仍保留；以節點 ID 為 key 區分身份）。
+  // v2：新版 Notice schema（含 notificationId 等欄位），與舊 key 不相容故換 key 重新開始。
+  const noticeKey = `guardian_notices_v2_${myId || 'anon'}`
   const [notices, setNotices] = useState<Notice[]>(() => {
     try { return JSON.parse(localStorage.getItem(noticeKey) ?? '[]') as Notice[] } catch { return [] }
   })
   useEffect(() => {
     try { localStorage.setItem(noticeKey, JSON.stringify(notices)) } catch { /* 容量不足忽略 */ }
   }, [notices, noticeKey])
+  // 鏡像給副作用（toast / 地圖閃爍）判斷「是否已存在此通知」用，避免同一事件重複跳。
+  const noticesRef = useRef(notices)
+  noticesRef.current = notices
+  const hasSeen = useCallback((notificationId: string) =>
+    noticesRef.current.some(n => n.notificationId === notificationId), [])
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  // 已顯示過的公告 id（去重來源：避免重連時 hub 重播舊公告造成重複通知/toast）。
-  // 以持久化的既有公告通知初始化，重新整理後仍不會重複跳。
-  const annSeenRef = useRef<Set<string>>(
-    new Set(notices.filter(n => n.kind === 'announce' && n.refId).map(n => n.refId as string)),
-  )
 
   const showToast = useCallback((kind: 'sos' | 'done' | 'announce', text: string) => {
     setToast({ kind, text })
@@ -112,67 +102,55 @@ export function MeshProvider({ children }: { children: ReactNode }) {
     toastTimer.current = setTimeout(() => setToast(null), 5000)
   }, [])
 
-  const addNotice = useCallback((n: Omit<Notice, 'id' | 'ts' | 'read'>) => {
-    setNotices(prev => [{ id: genId(), ts: Date.now(), read: false, ...n }, ...prev].slice(0, 50))
+  // 加入一筆通知；以 notificationId 去重（同一事件動作只會有一筆，跨 broadcast/peer/polling/重連收斂）。
+  const addNotice = useCallback((n: Notice) => {
+    setNotices(prev => {
+      if (prev.some(x => x.notificationId === n.notificationId)) return prev
+      return [n, ...prev].slice(0, 80)
+    })
   }, [])
 
   // ── 收到遠端回報 → 合併 + 通知（含詳細內容 + 定位） ──
   const onReport = useCallback((r: CrowdReport) => {
+    // 是否為「補充」：合併前已存在同一回報串（threadId）→ 補充；否則為新回報。
+    const threadId = r.threadId ?? r.id
+    const wasThreadKnown = reportsRef.current.some(x => (x.threadId ?? x.id) === threadId)
     const { changed, merged, prevStatus, isNew } = mergeReport(r)
     if (!changed) return
-    const who = merged.authorName || t('notice.someone')
-    const typeLabel = t(`rt.${merged.type}`)
-    const base = {
-      reporter: who, typeLabel, statusLabel: t(`status.handle.${merged.status ?? 'active'}`),
-      latest: merged.note, refKind: 'report' as const, refId: merged.threadId ?? merged.id,
-      lat: merged.lat, lng: merged.lng,
+    const sh = merged.shelter_id ? shelterById.get(merged.shelter_id) : undefined
+    const locationName = resolveLocationName(t, { name: sh?.name, address: sh?.address, lat: merged.lat, lng: merged.lng })
+    const notice = buildReportNotice(t, { report: merged, isNew, isSupplement: isNew && wasThreadKnown, prevStatus, locationName })
+    if (!notice) return
+    addNotice(notice)
+    if (notice.action === 'resolved' && !hasSeen(notice.notificationId)) {
+      showToast('done', t('report.resolvedToast', { id: merged.id.slice(0, 8) }))
     }
-    if (isNew) {
-      addNotice({ kind: 'report-new', text: t('notice.reportNew', { who, type: typeLabel }), ...base })
-    } else if (prevStatus && prevStatus !== merged.status) {
-      addNotice({ kind: 'report-status', text: t('notice.reportStatus', { type: typeLabel, status: t(`status.handle.${merged.status}`) }), ...base })
-      if (merged.status === 'resolved') showToast('done', t('report.resolvedToast', { id: merged.id.slice(0, 8) }))
-    }
-  }, [mergeReport, addNotice, showToast, t])
+  }, [mergeReport, addNotice, showToast, hasSeen, shelterById, t])
 
   // ── 收到遠端 SOS 事件 → 合併 + 通知 + 閃爍（含詳細 + 定位） ──
   const onSosEvent = useCallback((s: SosEvent) => {
     const { changed, merged, prevStatus, isNew } = sos.mergeRemote(s)
     if (!changed) return
-    const who = merged.senderName || t('notice.someone')
-    const latestReply = merged.replies.length ? merged.replies[merged.replies.length - 1] : null
-    const base = {
-      reporter: who, typeLabel: t(`sos.cat.${merged.category}`),
-      statusLabel: t(`sos.status.${merged.status}`),
-      latest: latestReply ? `${latestReply.fromName}：${latestReply.text}` : merged.text,
-      refKind: 'sos' as const, refId: merged.id, lat: merged.lat, lng: merged.lng,
-    }
-    if (isNew) {
-      showToast('sos', t('mesh.sosReceived', { id: who }))
+    const locationName = resolveLocationName(t, { name: merged.shelterName, address: merged.shelterLocation, lat: merged.lat, lng: merged.lng })
+    const notice = buildSosNotice(t, { event: merged, isNew, prevStatus, locationName })
+    if (!notice) return
+    // 新求救：跳 toast + 地圖閃爍（以 notificationId 判斷，避免同一事件多來源重複跳）。
+    if (notice.action === 'new' && !hasSeen(notice.notificationId)) {
+      showToast('sos', t('mesh.sosReceived', { id: notice.targetOwnerName }))
       setSosFlashId(merged.senderId)
       setTimeout(() => setSosFlashId(null), 6000)
-      addNotice({ kind: 'sos-new', text: t('notice.sosNew', { who }), ...base })
-    } else if (merged.status === 'safe' && merged.safeBySelf) {
-      addNotice({ kind: 'sos-safe', text: t('notice.sosSafe', { who }), ...base })
-    } else if (prevStatus && prevStatus !== merged.status) {
-      addNotice({ kind: 'sos-status', text: t('notice.sosStatus', { who, status: t(`sos.status.${merged.status}`) }), ...base })
-    } else {
-      // 狀態未變但有演變 → 視為新回覆（有人願意幫忙等）
-      addNotice({ kind: 'sos-reply', text: t('notice.sosReply', { who }), ...base })
     }
-  }, [sos, addNotice, showToast, t])
+    addNotice(notice)
+  }, [sos, addNotice, showToast, hasSeen, t])
 
-  // ── 套用一則公告 → 通知中心 (+toast)。依 id 去重（P2P 與後端輪詢兩來源收斂）。
+  // ── 套用一則公告 → 通知中心 (+toast)。以 notificationId 去重（P2P 與後端輪詢兩來源收斂）。
   //    補抓既有公告（後端首輪）toast=false：只進通知中心、不洗版跳 toast。──
   const applyAnnounce = useCallback((a: Announcement, opts?: { toast?: boolean }) => {
-    if (annSeenRef.current.has(a.id)) return
-    annSeenRef.current.add(a.id)
-    addNotice({
-      kind: 'announce', text: a.text, reporter: a.from, level: a.level,
-      statusLabel: t(`announce.level.${a.level}`), refId: a.id,
-    })
-    if (opts?.toast !== false) showToast('announce', a.text)
-  }, [addNotice, showToast, t])
+    const notice = buildAnnounceNotice(t, a)
+    const isDup = hasSeen(notice.notificationId)
+    addNotice(notice)
+    if (!isDup && opts?.toast !== false) showToast('announce', a.text)
+  }, [addNotice, showToast, hasSeen, t])
   // P2P 收到（即時）→ 一律 toast
   const onAnnounce = useCallback((a: Announcement) => applyAnnounce(a, { toast: true }), [applyAnnounce])
 
@@ -246,6 +224,10 @@ export function MeshProvider({ children }: { children: ReactNode }) {
   const markNoticesRead = useCallback(() => {
     setNotices(prev => prev.some(n => !n.read) ? prev.map(n => ({ ...n, read: true })) : prev)
   }, [])
+  // 單筆已讀（點擊通知時）：只動到該筆，badge 隨未讀數即時更新。
+  const markNoticeRead = useCallback((notificationId: string) => {
+    setNotices(prev => prev.map(n => (n.notificationId === notificationId && !n.read) ? { ...n, read: true } : n))
+  }, [])
   const unreadCount = useMemo(() => notices.filter(n => !n.read).length, [notices])
 
   // ── SOS 發送面板（可由避難所卡片等帶預填開啟）──
@@ -258,7 +240,7 @@ export function MeshProvider({ children }: { children: ReactNode }) {
     <MeshContext.Provider value={{
       ...mesh, sosFlashId,
       sosEvents: sos.sosEvents, raiseSos, replySos, setSosStatus, markSosSafe, openSosComposer,
-      notices, unreadCount, markNoticesRead,
+      notices, unreadCount, markNoticesRead, markNoticeRead,
     }}>
       {children}
       {composerPrefill && (

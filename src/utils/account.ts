@@ -97,7 +97,17 @@ export async function loginAccount(id: string, pin: string): Promise<AccountResu
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'login', id, pin }),
     })
-    if (res.status === 404) return { ok: false, error: 'not-found' }
+    if (res.status === 404) {
+      // 後端查無此帳號：最常見原因是後端以「記憶體模式」運作（未設定 KV/Upstash），
+      // 冷啟動後帳號表被清空。若本機曾成功註冊／登入此帳號（有快取的 salt+pinHash），
+      // 改用離線驗證放行，避免明明資訊正確卻顯示「查無此帳號」。PIN 仍會被驗證，錯誤照樣擋下。
+      const cached = getCached(id)
+      const h = cached ? await derivePin(pin, cached.salt) : null
+      if (cached && h && cached.pinHash === h) {
+        return { ok: true, name: cached.name, offline: true }
+      }
+      return { ok: false, error: 'not-found' }
+    }
     if (res.status === 429) {
       const j = await res.json().catch(() => ({}))
       return { ok: false, error: 'locked', retryAfter: j.retryAfter }

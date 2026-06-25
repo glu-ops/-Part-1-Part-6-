@@ -103,7 +103,7 @@ export default function NameGate() {
                 <div key={a.id} className={`flex items-center gap-2 glass-cell rounded-xl pr-2 ${cleanId === a.id ? 'ring-1 ring-white/50' : ''}`}>
                   <button onClick={() => pickAccount(a.id)}
                     className="flex-1 flex items-center gap-2.5 px-3 py-2.5 text-left min-w-0">
-                    <span className="w-2 h-2 rounded-full bg-[#3b82f6] shrink-0" />
+                    <span className="w-2 h-2 rounded-full bg-[#315A58] shrink-0" />
                     <span className="min-w-0">
                       <span className="block text-sm text-white font-semibold truncate">{a.name}</span>
                       <span className="block text-[11px] text-white/45 font-mono truncate">@{a.id}</span>

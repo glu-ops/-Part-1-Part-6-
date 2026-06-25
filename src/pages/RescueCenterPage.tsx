@@ -8,11 +8,12 @@ import { usePeerMesh, RESCUE_CENTER_ID } from '../hooks/usePeerMesh'
 import { useSosStore } from '../hooks/useSosStore'
 import { useSosSync } from '../hooks/useSosSync'
 import { useAnnounceSync } from '../hooks/useAnnounceSync'
-import { isSosClosed } from '../sos'
+import { isSosClosed, PRIORITY_COLOR } from '../sos'
 import type { MeshMessage } from '../hooks/usePeerMesh'
 import MeshMap from '../components/Map/MeshMap'
 import ReportThreadCard from '../components/Report/ReportThreadCard'
 import SosBoard from '../components/Mesh/SosBoard'
+import ShelterAiPanel from '../components/Rescue/ShelterAiPanel'
 import type { CrowdReport, SosEvent, SosReply, SosStatus, SosReplyKind, HandleStatus, ResourceStatus, Announcement, AnnounceLevel } from '../types'
 import { DEFAULT_LOC } from '../utils/geo'
 
@@ -27,7 +28,7 @@ function reportIcon(sev: ResourceStatus, count: number): L.DivIcon {
     className: '',
     html: `<div style="position:relative;width:18px;height:18px;">
       <div style="width:18px;height:18px;background:rgba(255,255,255,${ALPHA[sev]});border:1.5px solid rgba(255,255,255,.9);border-radius:4px;transform:rotate(45deg);box-shadow:0 0 8px rgba(255,255,255,.4);"></div>
-      ${count > 1 ? `<span style="position:absolute;top:-8px;right:-8px;background:#ef4444;color:#fff;font-size:9px;font-weight:700;border-radius:9px;min-width:15px;height:15px;display:flex;align-items:center;justify-content:center;padding:0 3px;">${count}</span>` : ''}
+      ${count > 1 ? `<span style="position:absolute;top:-8px;right:-8px;background:#B30303;color:#fff;font-size:9px;font-weight:700;border-radius:9px;min-width:15px;height:15px;display:flex;align-items:center;justify-content:center;padding:0 3px;">${count}</span>` : ''}
     </div>`,
     iconSize: [18, 18], iconAnchor: [9, 9], popupAnchor: [0, -10],
   })
@@ -138,7 +139,7 @@ export default function RescueCenterPage() {
   ))
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-white px-4 py-4 lg:h-screen lg:flex lg:flex-col">
+    <div className="min-h-screen bg-transparent text-white px-4 py-4 lg:h-screen lg:flex lg:flex-col">
       {/* 指揮中心抬頭（誠實標示為系統內部模擬節點） */}
       <div className="glass rounded-2xl px-4 py-3 flex items-center gap-3 mb-3">
         <ShieldAlert size={26} className="text-white shrink-0" />
@@ -151,7 +152,7 @@ export default function RescueCenterPage() {
             ? <span className="text-xs text-white/45 animate-pulse">{t('mesh.connecting')}</span>
             : error
               ? <span className="text-xs text-status-caution">{t('rescue.idTaken')}</span>
-              : <span className="text-xs text-status-safe flex items-center gap-1 justify-end"><Radio size={11} />{t('rescue.online')}</span>}
+              : <span className="text-xs text-white/70 flex items-center gap-1 justify-end"><Radio size={11} />{t('rescue.online')}</span>}
           <p className="text-[10px] text-white/35 font-mono mt-0.5">{myId || RESCUE_CENTER_ID}</p>
         </div>
       </div>
@@ -176,7 +177,7 @@ export default function RescueCenterPage() {
                 <button key={lv} onClick={() => setAnnLevel(lv)}
                   className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                     annLevel === lv
-                      ? (lv === 'critical' ? 'bg-status-danger text-white' : lv === 'warning' ? 'bg-status-caution text-neutral-900' : 'bg-sky-400 text-neutral-900')
+                      ? (lv === 'critical' ? 'bg-status-danger text-white' : lv === 'warning' ? 'bg-status-caution text-neutral-900' : 'bg-white/80 text-neutral-900')
                       : 'text-white/55'}`}>
                   {t(`announce.level.${lv}`)}
                 </button>
@@ -194,7 +195,7 @@ export default function RescueCenterPage() {
             <div className="space-y-1 mt-1 max-h-32 overflow-y-auto thin-scrollbar">
               {announcements.map(a => (
                 <div key={a.id} className="flex items-start gap-2 text-[11px] glass-cell rounded-lg px-2 py-1.5">
-                  <span className={`mt-0.5 w-1.5 h-1.5 rounded-full shrink-0 ${a.level === 'critical' ? 'bg-status-danger' : a.level === 'warning' ? 'bg-status-caution' : 'bg-sky-400'}`} />
+                  <span className={`mt-0.5 w-1.5 h-1.5 rounded-full shrink-0 ${a.level === 'critical' ? 'bg-status-danger' : a.level === 'warning' ? 'bg-status-caution' : 'bg-white/80'}`} />
                   <span className="text-white/80 flex-1 min-w-0">{a.text}</span>
                   <span className="text-white/30 shrink-0">{new Date(a.ts).toLocaleTimeString()}</span>
                 </div>
@@ -203,6 +204,9 @@ export default function RescueCenterPage() {
           </details>
         )}
       </div>
+
+      {/* AI Camera 避難所監測（PDR §10）：監測節點啟停 + 狀態總覽 + 異常警示處理 */}
+      <ShelterAiPanel />
 
       <div className="lg:grid lg:grid-cols-[1fr_1fr_1.1fr] lg:gap-4 lg:flex-1 lg:min-h-0">
         {/* 求救看板（B/C 層 SOS，可回覆與推進狀態） */}
@@ -258,7 +262,19 @@ export default function RescueCenterPage() {
 
         {/* 地圖：預設顯示 SOS 白點 + 回報菱形，點 marker 看詳情 */}
         <div className="glass rounded-3xl p-4 flex flex-col lg:min-h-0">
-          <p className="text-xs text-white/45 uppercase tracking-wider mb-2">{t('mesh.mapTitle')}</p>
+          {/* 圖例：與 mesh「即時位置」一致，置於標題列右側（不佔地圖空間） */}
+          <div className="flex items-center gap-2 mb-2">
+            <p className="text-xs text-white/45 uppercase tracking-wider">{t('mesh.mapTitle')}</p>
+            <span className="ml-auto flex items-center gap-2 text-[10px] text-white/55 flex-wrap justify-end">
+              <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full inline-block" style={{ background: '#315A58' }} />{t('rescue.title')}</span>
+              <span className="text-white/35">|</span>
+              <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full inline-block" style={{ background: PRIORITY_COLOR.high, boxShadow: `0 0 5px ${PRIORITY_COLOR.high}` }} />{t('sos.prio.high')}</span>
+              <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full inline-block" style={{ background: PRIORITY_COLOR.medium, boxShadow: `0 0 5px ${PRIORITY_COLOR.medium}` }} />{t('sos.prio.medium')}</span>
+              <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full inline-block" style={{ background: PRIORITY_COLOR.low, boxShadow: `0 0 5px ${PRIORITY_COLOR.low}` }} />{t('sos.prio.low')}</span>
+              <span className="text-white/35">|</span>
+              <span className="flex items-center gap-1"><i className="w-2 h-2 bg-white/70 inline-block rotate-45" />{t('home.legendReport')}</span>
+            </span>
+          </div>
           <div className="flex-1 min-h-[300px]">
             <MeshMap myPos={DEFAULT_LOC} peers={[]} flashId={null} meLabel={t('rescue.title')} noPosLabel={t('rescue.noPos')}
               sosPoints={sosPoints} extra={reportMarkers} />

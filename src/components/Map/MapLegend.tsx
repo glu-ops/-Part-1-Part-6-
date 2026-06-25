@@ -78,9 +78,9 @@ export default function MapLegend({
               <div className="space-y-1">
                 <p className="text-[9px] text-white/35 uppercase tracking-wider">{t('legend.shelters')}</p>
                 {([
-                  { color: '#22c55e', status: 'safe' as const,    key: 'common.safe' },
-                  { color: '#f4b740', status: 'caution' as const, key: 'common.caution' },
-                  { color: '#ef4444', status: 'danger' as const,  key: 'common.dangerOrNa' },
+                  { color: '#889D73', status: 'safe' as const,    key: 'common.safe' },
+                  { color: '#F5C776', status: 'caution' as const, key: 'common.caution' },
+                  { color: '#B30303', status: 'danger' as const,  key: 'common.dangerOrNa' },
                 ]).map(l => {
                   const count = shelters.filter(s =>
                     s.not_suitable_for.includes(disaster) ? l.status === 'danger' : getOverallStatus(s, disaster) === l.status,
@@ -119,11 +119,11 @@ export default function MapLegend({
               <div className="space-y-1 pt-1.5 border-t border-white/10">
                 <p className="text-[9px] text-white/35 uppercase tracking-wider">{t('legend.buildings')}</p>
                 <div className="flex items-center gap-2 text-[11px] text-white/70">
-                  <span className="w-2.5 h-2.5 flex-shrink-0 rounded-[2px]" style={{ background: '#ef4444' }} />
+                  <span className="w-2.5 h-2.5 flex-shrink-0 rounded-[2px]" style={{ background: '#B30303' }} />
                   <span>{t('home.legendCollapse')}</span>
                 </div>
                 <div className="flex items-center gap-2 text-[11px] text-white/70">
-                  <span className="w-2.5 h-2.5 flex-shrink-0 rounded-[2px]" style={{ background: '#f97316' }} />
+                  <span className="w-2.5 h-2.5 flex-shrink-0 rounded-[2px]" style={{ background: '#F5C776' }} />
                   <span>{t('home.legendAtRisk')}</span>
                 </div>
               </div>

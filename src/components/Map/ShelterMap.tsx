@@ -26,7 +26,7 @@ const userIcon = L.divIcon({
   className: '',
   html: `<div style="
     width:14px;height:14px;border-radius:50%;
-    background:#f5f5f5;
+    background:#F4F1E6;
     border:3px solid rgba(255,255,255,.95);
     box-shadow:0 0 0 4px rgba(255,255,255,.18), 0 0 14px rgba(255,255,255,.55);
   "></div>`,

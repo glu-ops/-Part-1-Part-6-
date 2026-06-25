@@ -1,4 +1,5 @@
 import type { Shelter, OverallStatus, DisasterMode, UserRole } from '../types'
+import { getResourceCapacityStatus } from './shelterCapacity'
 
 // re-export so pages don't need to import from two places
 export type { Shelter }
@@ -36,8 +37,11 @@ export function calcScore(s: Shelter, disaster: DisasterMode): number {
 }
 
 export function getOverallStatus(s: Shelter, disaster: DisasterMode): OverallStatus {
+  const resourceStatus = getResourceCapacityStatus(s)
+  if (resourceStatus === 'danger') return 'danger'
+
   const score = calcScore(s, disaster)
-  if (score >= 60) return 'safe'
+  if (score >= 60) return resourceStatus === 'caution' ? 'caution' : 'safe'
   if (score >= 30) return 'caution'
   return 'danger'
 }

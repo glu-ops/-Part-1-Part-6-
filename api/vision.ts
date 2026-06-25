@@ -42,6 +42,27 @@ note：用繁體中文，30 字以內簡短描述照片中觀察到的狀況。`
 const VALID_TYPES = ['crowd', 'road', 'resource', 'disaster']
 const VALID_SEV = ['green', 'yellow', 'red']
 
+// 避難所 AI 監測攝影機專用 prompt（PDR §7）：一次回傳人潮密度 + 5 類物資 + 可信度。
+const SHELTER_PROMPT = `你是避難所 AI 監測攝影機的影像辨識助手。分析這張避難所室內照片，判斷人潮密度與各類物資狀況。
+
+回傳嚴格 JSON 格式（不要 markdown 包裹）：
+{"occupancy":"...","water":"...","food":"...","medical":"...","power":"...","supplies":"...","confidence":0,"note":"..."}
+
+occupancy（人潮密度）只能：green（寬鬆）/ yellow（擁擠）/ red（爆滿、接近額滿）
+
+water/food/medical/power/supplies 只能：green（正常充足）/ yellow（偏少）/ red（不足或中斷）/ unknown（看不出來）
+- water 飲水：瓶裝水、水箱、飲水桶
+- food 糧食：便當、乾糧、泡麵、食物箱
+- medical 醫療：急救箱、醫療站、輪椅、擔架
+- power 電力：燈光、發電機、充電設備（畫面全暗視為 red 中斷）
+- supplies 物資：毛毯、衛生用品、行動電源、民生用品
+
+confidence：你對整體判斷的可信度，0–100 整數。
+note：用繁體中文，30 字以內簡短描述照片中觀察到的狀況。`
+
+const VALID_LEVEL = ['green', 'yellow', 'red', 'unknown']
+const oneOf = (v: any, allow: string[], fallback: string) => (allow.includes(v) ? v : fallback)
+
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 function readBody(req: any): any {
@@ -63,8 +84,13 @@ export default async function handler(req: any, res: any) {
   const token = process.env.HF_TOKEN || process.env.VITE_HF_TOKEN
   if (!token) { res.status(503).json({ error: 'NO_API_KEY' }); return }
 
-  const dataUrl = String(readBody(req).dataUrl ?? '')
+  const body = readBody(req)
+  const dataUrl = String(body.dataUrl ?? '')
   if (!dataUrl.startsWith('data:image/')) { res.status(400).json({ error: 'BAD_IMAGE' }); return }
+
+  // mode='shelter' → 避難所監測辨識；其餘（預設）→ 既有災情回報辨識
+  const shelterMode = body.mode === 'shelter'
+  const prompt = shelterMode ? SHELTER_PROMPT : PROMPT
 
   let lastErr = 'Model is loading'
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -81,7 +107,7 @@ export default async function handler(req: any, res: any) {
             role: 'user',
             content: [
               { type: 'image_url', image_url: { url: dataUrl } },
-              { type: 'text', text: PROMPT },
+              { type: 'text', text: prompt },
             ],
           }],
           max_tokens: 256,
@@ -108,6 +134,21 @@ export default async function handler(req: any, res: any) {
 
     let parsed: any
     try { parsed = JSON.parse(match[0]) } catch { res.status(502).json({ error: 'BAD_JSON' }); return }
+
+    if (shelterMode) {
+      const conf = Number(parsed.confidence)
+      res.status(200).json({
+        occupancy: oneOf(parsed.occupancy, VALID_SEV, 'yellow'),
+        water:    oneOf(parsed.water,    VALID_LEVEL, 'unknown'),
+        food:     oneOf(parsed.food,     VALID_LEVEL, 'unknown'),
+        medical:  oneOf(parsed.medical,  VALID_LEVEL, 'unknown'),
+        power:    oneOf(parsed.power,    VALID_LEVEL, 'unknown'),
+        supplies: oneOf(parsed.supplies, VALID_LEVEL, 'unknown'),
+        confidence: Number.isFinite(conf) ? Math.max(0, Math.min(100, Math.round(conf))) : 70,
+        note: typeof parsed.note === 'string' ? parsed.note.slice(0, 100) : '',
+      })
+      return
+    }
 
     res.status(200).json({
       type: VALID_TYPES.includes(parsed.type) ? parsed.type : 'disaster',

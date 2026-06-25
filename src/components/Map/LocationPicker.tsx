@@ -21,9 +21,9 @@ const pinIcon = L.divIcon({
     width:24px;height:24px;transform:translateY(-8px);
     filter:drop-shadow(0 0 8px rgba(255,255,255,.5));
   ">
-    <svg viewBox="0 0 24 24" width="24" height="24" fill="#f5f5f5" stroke="#1c1e23" stroke-width="1.5">
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="#F4F1E6" stroke="#101510" stroke-width="1.5">
       <path d="M12 2C8 2 5 5 5 9c0 5 7 13 7 13s7-8 7-13c0-4-3-7-7-7z"/>
-      <circle cx="12" cy="9" r="2.5" fill="#1c1e23" stroke="none"/>
+      <circle cx="12" cy="9" r="2.5" fill="#101510" stroke="none"/>
     </svg>
   </div>`,
   iconSize: [24, 24],

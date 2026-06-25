@@ -5,6 +5,8 @@ export type OverallStatus = 'safe' | 'caution' | 'danger'
 export type UserRole = 'student' | 'elderly' | 'pregnant' | 'child' | 'disabled' | 'adult'
 export type DisasterMode = 'earthquake' | 'flood' | 'war' | 'epidemic'
 export type ReportType = 'crowd' | 'road' | 'resource' | 'disaster'
+export type SupportTime = '0-4' | '4-24' | '24-72' | '72+'
+export type ResourceCapacityLevel = 'R1' | 'R2' | 'R3' | 'R4'
 
 // 回報 / SOS 共用的處理狀態機（指揮中心可推進）
 export type HandleStatus = 'active' | 'received' | 'handling' | 'resolved'
@@ -55,6 +57,21 @@ export interface Shelter {
     medical: ResourceStatus
     power: ResourceStatus
   }
+  capacity_people?: string
+  current_occupancy?: number
+  water_support_time?: SupportTime
+  food_support_time?: SupportTime
+  medical_support_time?: SupportTime
+  power_support_time?: SupportTime
+  physical_capacity?: string
+  entrance_capacity?: string
+  resource_capacity_level?: ResourceCapacityLevel
+  support_time?: SupportTime
+  resource_conditions?: string
+  suitable_users?: string
+  overall_role?: string
+  management_capacity?: string
+  notes?: string
   last_updated: string
   report_count: number
   applicable_disasters: DisasterMode[]
@@ -136,4 +153,64 @@ export interface Announcement {
   text: string                 // 公告內容
   ts: number                   // 發布時間
   from: string                 // 發布單位名稱（指揮中心）
+}
+
+// ── AI Camera 避難所監測節點（PDR）：自動辨識避難所人數與物資，疊加在 shelters.json 基準上 ──
+// 監測模式：目前用 simulation（自動輪播範例照辨識），預留 live_camera 接真實攝影機
+export type AIMonitorMode = 'simulation' | 'live_camera'
+// 監測節點狀態：未部署 / demo / 在線 / 離線 / 錯誤（離線、錯誤皆視為需指揮中心關注）
+export type AIMonitorStatus = 'not_installed' | 'demo' | 'online' | 'offline' | 'error'
+// 資源等級：沿用 ResourceStatus 三燈，另加 unknown（AI 看不出來）
+export type ResourceLevel = ResourceStatus | 'unknown'
+
+// 指揮中心對 AI 回報的審核狀態（PDR §8/§9）：
+//  auto       正常且可信度高 → 系統自動更新，不需人工
+//  pending    異常 → 等待東區救災指揮中心確認
+//  confirmed  指揮中心確認屬實
+//  corrected  指揮中心修正後採用
+//  ignored    指揮中心判定誤報、忽略（不更新使用者端顯示值）
+export type AIReviewStatus = 'auto' | 'pending' | 'confirmed' | 'corrected' | 'ignored'
+
+// 異常嚴重度：warning（黃色警戒，如資源偏低）/ critical（紅色危急，如不足、接近額滿）
+export type AbnormalSeverity = 'warning' | 'critical'
+
+// 權威來源（PDR §12 合併順序）：command > staff > aiCamera > aiSimulation > crowd > system
+// AI 資料不可覆蓋較新的指揮中心 / 避難所工作人員資料。
+export type ShelterStatusSource = 'command' | 'staff' | 'aiCamera' | 'aiSimulation' | 'crowd' | 'system'
+
+// AI 監測單筆回報（避難所即時狀態疊加層）。以 shelterId 為鍵、version 遞增收斂，
+// 同步機制比照 SosEvent / Announcement（P2P + /api/shelter-ai-status 輪詢）。
+export interface ShelterAIStatus {
+  shelterId: string
+  aiMonitor: {
+    status: AIMonitorStatus
+    mode: AIMonitorMode
+    source: ShelterStatusSource     // 實際產生此筆資料的來源
+    lastReportAt: string            // 監測節點最後回報時間（ISO）
+  }
+  people: {
+    estimatedCount: number          // AI 粗估目前人數
+    capacity: number                // 容量（取自 shelters.json physical）
+    occupancyRate: number           // 收容率 0–100
+    confidence: number              // 人數估計可信度 0–100
+  }
+  resources: {
+    water: ResourceLevel
+    food: ResourceLevel
+    medical: ResourceLevel
+    power: ResourceLevel
+    supplies: ResourceLevel          // 一般物資（毛毯 / 民生用品）
+  }
+  urgentNeeds: string[]             // 急需項目（顯示用，如「缺水」「缺毛毯」）
+  analysis?: string                 // AI 對目前狀況的文字分析（vision note 或模擬摘要）
+  abnormal: boolean                 // 是否異常（需指揮中心處理）
+  abnormalReasons: string[]         // 異常原因（PDR §9）
+  abnormalSeverity?: AbnormalSeverity // 異常嚴重度（warning 黃 / critical 紅）
+  confidence: number                // 整體可信度 0–100（< 85 視為需人工）
+  review: AIReviewStatus            // 審核狀態（見上）
+  reviewedBy?: string               // 處理者（指揮中心）
+  reviewNote?: string               // 指揮中心備註
+  detectedAt: string                // AI 偵測時間（ISO）
+  updatedAt: string                 // 此筆最後更新時間（ISO）
+  version: number                   // 合併版本號（演變時遞增、舊版丟棄）
 }

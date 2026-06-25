@@ -10,6 +10,7 @@ import BottomNav from './components/BottomNav'
 import HelpFab from './components/HelpFab'
 import PwaBanner from './components/PwaBanner'
 import NameGate from './components/NameGate'
+import ShelterAiSyncBridge from './components/ShelterAiSyncBridge'
 import HomePage from './pages/HomePage'
 import ShelterDetailPage from './pages/ShelterDetailPage'
 import RoutePage from './pages/RoutePage'
@@ -27,6 +28,7 @@ export default function App() {
     <I18nProvider>
     <UserProvider>
       <ShelterProvider>
+        <ShelterAiSyncBridge />
         {bare ? (
           <Routes>
             <Route path="/rescue/*" element={<RescueCenterPage />} />

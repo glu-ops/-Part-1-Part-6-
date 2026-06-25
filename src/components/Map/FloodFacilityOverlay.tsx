@@ -10,12 +10,12 @@ const FACILITIES = facilityData.facilities as Facility[]
 
 // 每類據點：單字標記 + 代表色（避免彩色 emoji，沿用 App 單色＋形狀風格）
 export const FACILITY_META: Record<FacilityType, { char: string; color: string }> = {
-  eoc:    { char: '指', color: '#f59e0b' },
-  backup: { char: '備', color: '#ec4899' },
-  pump:   { char: '泵', color: '#38bdf8' },
-  water:  { char: '水', color: '#22d3ee' },
-  supply: { char: '物', color: '#34d399' },
-  heli:   { char: '機', color: '#a78bfa' },
+  eoc:    { char: '指', color: '#F5C776' },
+  backup: { char: '備', color: '#B30303' },
+  pump:   { char: '泵', color: '#6F8E89' },
+  water:  { char: '水', color: '#5F7D76' },
+  supply: { char: '物', color: '#889D73' },
+  heli:   { char: '機', color: '#889D73' },
 }
 
 function facilityIcon(type: FacilityType): L.DivIcon {

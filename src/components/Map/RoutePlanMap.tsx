@@ -14,7 +14,7 @@ import type { Shelter } from '../../types'
 
 const userIcon = L.divIcon({
   className: '',
-  html: `<div style="width:16px;height:16px;border-radius:50%;background:#f5f5f5;border:3px solid rgba(255,255,255,.95);box-shadow:0 0 0 4px rgba(255,255,255,.18),0 0 14px rgba(255,255,255,.5);"></div>`,
+  html: `<div style="width:16px;height:16px;border-radius:50%;background:#F4F1E6;border:3px solid rgba(255,255,255,.95);box-shadow:0 0 0 4px rgba(255,255,255,.18),0 0 14px rgba(255,255,255,.5);"></div>`,
   iconSize: [16, 16], iconAnchor: [8, 8],
 })
 const destIcon = L.divIcon({
@@ -83,7 +83,7 @@ export default function RoutePlanMap({ dest, path, onSelectDest }: Props) {
 
         {line && (
           <>
-            <Polyline positions={line} pathOptions={{ color: '#111317', weight: 9, opacity: 0.5 }} />
+            <Polyline positions={line} pathOptions={{ color: '#050606', weight: 9, opacity: 0.5 }} />
             <Polyline positions={line} pathOptions={{
               color: '#ffffff', weight: 5, opacity: isReal ? 0.95 : 0.7,
               dashArray: isReal ? undefined : '4 10', lineCap: 'round', lineJoin: 'round',
